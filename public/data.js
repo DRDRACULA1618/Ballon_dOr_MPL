@@ -4,6 +4,7 @@ export const ballot = {
   "eyebrow": "Le vote des supporters",
   "catalogVersion": "mpl-ballin-dor-2026-draft-1",
   "closingDate": "2026-12-01",
+  "closesAt": "2026-12-01T23:59:59.000Z",
   "categories": [
     {
       "id": "C01",

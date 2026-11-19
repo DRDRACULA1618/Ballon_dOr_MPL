@@ -71,7 +71,7 @@ function renderState({ icon = "✦", title, message, error = "" }) {
 }
 
 function formatDeadline(value) {
-  if (!value) return "Clôture le 1er décembre 2026 · heure à confirmer";
+  if (!value) return "Clôture le 1er décembre 2026 à 23:59:59 GMT";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Date de clôture à définir";
   return `Clôture le ${new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Abidjan" }).format(date)} (Abidjan)`;
@@ -233,7 +233,7 @@ async function loadBallot() {
 
 async function start() {
   if (demoMode) {
-    renderBallot({ ...ballot, closesAt: "" }, true);
+    renderBallot({ ...ballot, closesAt: ballot.closesAt }, true);
     return;
   }
   if (sessionToken) {

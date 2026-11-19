@@ -44,6 +44,7 @@ def main() -> None:
         "eyebrow": "Le vote des supporters",
         "catalogVersion": VERSION,
         "closingDate": "2026-12-01",
+        "closesAt": "2026-12-01T23:59:59.000Z",
         "categories": categories,
         "pending": review["pending"],
     }

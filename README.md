@@ -5,7 +5,7 @@ Plateforme de vote mobile en français, avec interface noire et dorée. Le scrut
 ## État du projet
 
 - Catalogue reproduit depuis le transfert : 11 catégories et 68 nominations. Les graphies du premier draft sont conservées.
-- La date communiquée pour la clôture est le 1er décembre 2026. L’heure précise, à régler en heure d’Abidjan, n’est pas encore renseignée.
+- La clôture communiquée est le 1er décembre 2026 à 23:59:59 GMT (heure d’Abidjan).
 - `data/catalog-review.json` contient les confirmations attendues. Le backend refuse l’ouverture tant que cette liste n’est pas vide.
 - Aucun électeur, e-mail, lien actif, secret ou bulletin n’est inclus dans Git.
 - Aucun déploiement Cloudflare, Web App Apps Script, fichier maître Google Sheets ou rapport de résultats n’est créé par ce dépôt.
@@ -43,7 +43,7 @@ La version du catalogue est gelée à l’ouverture. Pour toute modification apr
 
 Les étapes détaillées sont dans [`docs/INSTALLATION.md`](docs/INSTALLATION.md). En bref :
 
-1. Crée un fichier Google Sheets maître dédié, ouvre Apps Script depuis ce fichier et ajoute les sources de `apps-script/`.
+1. Ouvre le fichier Google Sheets maître dédié au scrutin, lance Apps Script depuis ce classeur et ajoute les sources de `apps-script/`.
 2. Lance `setupMasterSpreadsheet()` depuis l’éditeur Apps Script et configure ses propriétés secrètes.
 3. Déploie Apps Script comme application Web exécutée par le propriétaire, puis copie l’URL `/exec`.
 4. Connecte ce dépôt GitHub à Cloudflare Pages. Laisse la commande de build vide et règle `public` comme répertoire de sortie.

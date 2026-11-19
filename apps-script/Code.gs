@@ -11,7 +11,7 @@ const SHEET_HEADERS = {
 const DEFAULT_SETTINGS = {
   title: "MPL Ballin’ d’Or 2026",
   closing_date: "2026-12-01",
-  closes_at: "",
+  closes_at: "2026-12-01T23:59:59.000Z",
   is_open: "0",
   has_opened: "0",
   catalog_hash: "",

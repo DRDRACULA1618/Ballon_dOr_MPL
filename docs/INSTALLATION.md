@@ -4,7 +4,7 @@ Ce guide prépare le service. Le dépôt ne déploie pas le site et ne crée pas
 
 ## 1. Préparer le fichier maître
 
-1. Crée un Google Sheets dédié au scrutin. Laisse le partage sur « Accès restreint » et ne sélectionne pas « Toute personne disposant du lien ».
+1. Ouvre le Google Sheets maître dédié au scrutin. Laisse le partage sur « Accès restreint » et ne sélectionne pas « Toute personne disposant du lien ».
 2. Depuis ce classeur, ouvre **Extensions → Apps Script**.
 3. Remplace le contenu de `Code.gs` par `apps-script/Code.gs`, ajoute le fichier `Catalog.gs` depuis `apps-script/Catalog.gs`, et active le manifeste `appsscript.json` avec le contenu fourni.
 4. Dans les paramètres du projet Apps Script, règle le fuseau sur `Africa/Abidjan`.
@@ -41,7 +41,7 @@ Le dépôt est public : toute valeur commise dans Git est visible. Le secret du 
 1. Confirme les catégories et les 68 nominations. Les graphies actuelles sont celles du premier draft.
 2. Résous `data/catalog-review.json`, puis régénère les deux catalogues avec `python3 scripts/generate_catalog.py`.
 3. Mets à jour `apps-script/Catalog.gs` dans le projet Apps Script et redéploie la Web App.
-4. Dans `/admin.html`, saisis l’heure exacte de clôture en heure d’Abidjan. La date préremplie est le 1er décembre 2026; le champ heure reste volontairement vide tant qu’elle n’a pas été confirmée.
+4. Dans `/admin.html`, vérifie l’échéance préremplie : 1er décembre 2026 à 23:59:59 GMT, heure d’Abidjan. Le serveur contrôle la clôture à la seconde indiquée.
 5. Ajoute les électeurs avec leur nom et l’adresse e-mail enregistrée. Vérifie l’orthographe des adresses et la disponibilité du quota d’envoi Apps Script.
 6. Ouvre le scrutin depuis l’espace organisateur, puis envoie les invitations. Chaque lien est individuel et les codes OTP sont envoyés à l’adresse associée.
 7. Après clôture, exécute l’audit et synchronise le rapport vers les seuls comptes Google autorisés. Le rapport est un classeur distinct et reste en accès restreint.
@@ -53,4 +53,4 @@ L’espace organisateur ne permet pas d’ouvrir le scrutin tant que les confirm
 - L’envoi des codes dépend des quotas quotidiens MailApp du compte qui exécute Apps Script; l’interface vérifie le quota disponible avant un envoi.
 - Apps Script utilise un verrou global pour sérialiser les écritures. Google Sheets ne fournit pas de transaction multi-onglets; l’audit signale une différence éventuelle entre électeurs marqués comme ayant voté et bulletins enregistrés.
 - Le registre du maître est identifiable par l’administrateur. Les bulletins stockés séparément ne contiennent pas le nom ou l’adresse e-mail du votant, mais l’heure d’un vote peut permettre une corrélation temporelle.
-- La liste réelle des électeurs, les propriétaires du maître, les comptes autorisés au rapport, l’heure de clôture exacte et les URL de déploiement ne sont pas fournies dans Git.
+- La liste réelle des électeurs, les propriétaires du maître, les comptes autorisés au rapport et les URL de déploiement doivent être configurés hors de Git. L’échéance du projet est le 1er décembre 2026 à 23:59:59 GMT (heure d’Abidjan).
