@@ -469,3 +469,13 @@ body.ballot-page {
 @media (prefers-reduced-motion: reduce) {
   .trophy-svg { animation: none; }
 }
+
+.ballot-page .demo-receipt .state-icon {
+  border: 1px solid rgba(255,239,197,.5);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #f3d98f, #bd8731);
+  box-shadow: 0 10px 30px rgba(182,128,37,.2), inset 0 1px 0 rgba(255,255,255,.55);
+}
+.ballot-page .demo-receipt .section-kicker { margin: 0; color: #c9a45c; }
+.ballot-page .demo-receipt h1 { color: #f6e2aa; }
+.ballot-page .demo-receipt .demo-ribbon { max-width: 520px; justify-content: center; margin: 27px auto 0; }
