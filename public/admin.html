@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111111" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Organisateur — MPL Ballin’ d’Or 2026</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./admin.js"></script>
+  </head>
+  <body>
+    <header class="site-topbar"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">✦</span><span>MPL Ballin’<br>d’Or 2026</span></a><span class="topbar-label">Espace organisateur</span></header>
+    <main class="admin-main" id="admin-root">
+      <section class="locked-admin">
+        <p class="eyebrow">Accès privé</p>
+        <h1>Organiser le vote</h1>
+        <p>Entre la clé organisateur configurée dans les propriétés du projet Apps Script. Elle reste en mémoire le temps de cette page.</p>
+        <form id="login-form" class="admin-row">
+          <label class="field">Clé organisateur<input id="admin-secret" type="password" autocomplete="current-password" required /></label>
+          <button class="admin-button" type="submit">Ouvrir</button>
+        </form>
+        <p class="admin-message" id="login-message" role="status"></p>
+      </section>
+    </main>
+  </body>
+</html>

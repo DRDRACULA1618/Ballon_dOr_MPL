@@ -1,0 +1,20 @@
+{
+  "evenement": "MPL Ballin’ d’Or 2026",
+  "statut": "Premier draft, à valider",
+  "nombre_categories": 11,
+  "nombre_nominations": 68,
+  "categories": [
+    {"id":"C01","titre":"Meilleure recrue","nomines":["Mahmoud","Blaise","Brice","Doudou","Magdi","Adjoumani","Hossane kader","Ange le corps du desir"]},
+    {"id":"C02","titre":"Meilleur ROOkie","nomines":["Doudou","Blaise","Qays","Mahmoud","Hossane kader"]},
+    {"id":"C03","titre":"Meilleur milieu","nomines":["Moritie","Sidick","Youcef","Tehui","Doudou","Amadou","Cyrille","Ali","Hugo"]},
+    {"id":"C04","titre":"Le joueur attieke le abodjam","nomines":["Sheva","Sidick","Isco","Asco","Abraham","Jean rene"]},
+    {"id":"C05","titre":"Meilleure progression","nomines":["Frabck gogo","Tonton moritie","Adams","Abraham","Tehui amoroso"]},
+    {"id":"C06","titre":"Performùance de l’année","nomines":["Gaououssou","Bley alexandre","Jean marie","Youyou"]},
+    {"id":"C07","titre":"Meilleure capi","nomines":["Tehui","Abraham","Gaopussou","Jean marie"]},
+    {"id":"C08","titre":"Badaud fatche separez les","nomines":["Bley","Hossane vs guillaume","Pelo vs youyou","Gaoussou vs jean marie"]},
+    {"id":"C09","titre":"Le -eme homme","nomines":["Isco","Kader","Magdi","Hugo","Blaise","Hassane junior"]},
+    {"id":"C10","titre":"Meilleur defenseur","nomines":["Jean marie","Pelo","Louis roland","Brice","Adams","Asco","Hassane junior","Junior","Momo ouattara","Qays"]},
+    {"id":"C11","titre":"Meilleur avant centre","nomines":["Gaoussou","Youyou","Gogo","Abraham","Dodji","Momo Dramera","Magdi"]}
+  ],
+  "remarques": ["Orthographes conservées telles que fournies dans le premier message.","Confirmer les libellés ambigus et les éventuels alias avant l'ouverture.","Les noms répétés entre catégories sont intentionnellement conservés."]
+}
