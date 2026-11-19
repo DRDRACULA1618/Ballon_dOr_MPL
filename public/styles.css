@@ -590,3 +590,69 @@ body.ballot-page {
 @media (prefers-reduced-motion: reduce) {
   .cinematic-screen *, .cinematic-screen::before, .cinematic-screen::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Broadcast-style stadium finish for the spinning football. */
+.cinematic-light {
+  background: conic-gradient(from 245deg at 50% 0,
+    transparent 0 13deg,
+    rgba(63, 194, 255, .17) 16deg 20deg,
+    transparent 24deg 42deg,
+    rgba(232, 190, 99, .17) 45deg 50deg,
+    transparent 54deg 69deg,
+    rgba(63, 194, 255, .11) 72deg 77deg,
+    transparent 81deg);
+}
+.cinematic-screen::before {
+  background:
+    radial-gradient(ellipse at 8% 8%, rgba(110,218,255,.62) 0 2px, transparent 16px),
+    radial-gradient(ellipse at 92% 8%, rgba(246,208,126,.7) 0 2px, transparent 18px),
+    linear-gradient(180deg, transparent 25%, rgba(8,10,16,.15) 58%, #070a11 100%),
+    repeating-linear-gradient(112deg, transparent 0 55px, rgba(255,255,255,.018) 56px 57px);
+}
+.cinematic-screen::after {
+  background:
+    linear-gradient(180deg, transparent, rgba(15,34,36,.75)),
+    radial-gradient(ellipse at 50% 100%, rgba(222,177,88,.24), transparent 65%),
+    repeating-linear-gradient(103deg, transparent 0 8px, rgba(89,183,112,.14) 9px 10px, transparent 11px 19px);
+}
+.cinematic-stars::before {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse, rgba(186,239,255,.88) 0 1px, transparent 3px),
+    radial-gradient(ellipse, rgba(255,225,158,.75) 0 1px, transparent 3px);
+  background-position: 18% 36%, 83% 49%;
+  background-size: 97px 131px, 151px 113px;
+  content: "";
+  animation: spray-drift 5s ease-in-out infinite alternate;
+}
+.ball-journey::before,
+.ball-journey::after {
+  position: absolute;
+  z-index: 2;
+  inset: -19%;
+  border: 2px solid transparent;
+  border-top-color: rgba(234,194,103,.94);
+  border-bottom-color: rgba(67,204,255,.95);
+  border-radius: 50%;
+  content: "";
+  filter: drop-shadow(0 0 9px rgba(63,194,255,.75)) drop-shadow(0 0 16px rgba(236,190,91,.48));
+  pointer-events: none;
+  transform: rotateX(68deg) rotateZ(-24deg);
+  animation: trail-orbit 2.2s linear infinite;
+}
+.ball-journey::after {
+  inset: -10%;
+  border-top-color: rgba(79,197,255,.88);
+  border-bottom-color: rgba(255,222,151,.83);
+  transform: rotateX(68deg) rotateZ(62deg) scale(.84);
+  animation-duration: 1.65s;
+  animation-direction: reverse;
+}
+.cinematic-ball { filter: drop-shadow(0 0 13px rgba(69,196,255,.23)) drop-shadow(0 24px 34px rgba(0,0,0,.58)); }
+@keyframes trail-orbit { to { rotate: 360deg; } }
+@keyframes spray-drift { from { transform: translate3d(-5px, 7px, 0); opacity: .38; } to { transform: translate3d(7px, -9px, 0); opacity: .78; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ball-journey::before, .ball-journey::after, .cinematic-stars::before { animation: none; }
+}
