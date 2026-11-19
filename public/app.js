@@ -75,6 +75,30 @@ function renderDemoReceipt() {
   app.innerHTML = `${topbar("Aperçu terminé", ballot.title, "./?demo=1")}<main class="state-view demo-receipt"><div class="state-icon" aria-hidden="true">✓</div><p class="section-kicker">MPL BALLIN’ D’OR 2026</p><h1>Vote soumis</h1><p>Merci pour ta participation. Dans le scrutin réel, ce lien personnel serait maintenant désactivé et ne permettrait plus de voter une seconde fois.</p><div class="demo-ribbon">Confirmation simulée — aucun vote réel n’a été enregistré.</div></main><footer class="site-footer"><span>Aperçu public — le bulletin est fermé dans cet onglet.</span></footer>`;
 }
 
+function playBallAnimation(direction) {
+  return new Promise((resolve) => {
+    const isOutro = direction === "outro";
+    app.innerHTML = `<section class="cinematic-screen ${isOutro ? "cinematic-outro" : "cinematic-intro"}" aria-label="${isOutro ? "Animation de fin du vote" : "Animation de bienvenue"}"><div class="cinematic-stars" aria-hidden="true"></div><div class="cinematic-light" aria-hidden="true"></div><div class="cinematic-copy"><p>${isOutro ? "MPL · BALLIN’ D’OR 2026" : "LE RENDEZ-VOUS DES CHAMPIONS"}</p><h1>${isOutro ? "Merci pour ton vote" : "La ligue des champions"}</h1><span>${isOutro ? "TON CHOIX ENTRE DANS L’HISTOIRE" : "MPL BALLIN’ D’OR · 2026"}</span></div><div class="ball-journey ${isOutro ? "ball-journey-out" : "ball-journey-in"}" aria-hidden="true"><div class="ball-shadow"></div><svg class="cinematic-ball" viewBox="0 0 220 220"><defs><radialGradient id="ballSurface" cx="33%" cy="27%"><stop stop-color="#fff8df"/><stop offset=".42" stop-color="#e5c474"/><stop offset="1" stop-color="#82561d"/></radialGradient><clipPath id="ballClip"><circle cx="110" cy="110" r="91"/></clipPath></defs><circle cx="110" cy="110" r="92" fill="url(#ballSurface)" stroke="#f8e6b6" stroke-width="2"/><g clip-path="url(#ballClip)" fill="#171923" stroke="#f4d88e" stroke-width="2"><path d="m110 65 22 16-8 26h-28l-8-26zm-48-31 26 4 13 24-24 10-23-17zm96 0-26 4-13 24 24 10 23-17zM61 124l25-15 20 20-8 29-27 3zm98 0-25-15-20 20 8 29 27 3zM84 177l14-19h24l14 19-11 26H95z"/></g><ellipse cx="79" cy="53" rx="38" ry="17" fill="#fff" opacity=".16" transform="rotate(-33 79 53)"/></svg></div><button class="skip-animation" type="button">Passer l’animation</button></section>`;
+    const screen = app.querySelector(".cinematic-screen");
+    const skip = app.querySelector(".skip-animation");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timer);
+      skip.removeEventListener("click", finish);
+      window.removeEventListener("keydown", onKeyDown);
+      screen.classList.add("cinematic-leaving");
+      window.setTimeout(resolve, reducedMotion ? 80 : 420);
+    };
+    const onKeyDown = (event) => { if (event.key === "Escape") finish(); };
+    skip.addEventListener("click", finish);
+    window.addEventListener("keydown", onKeyDown);
+    const timer = window.setTimeout(finish, reducedMotion ? 850 : (isOutro ? 2700 : 2850));
+  });
+}
+
 function formatDeadline(value) {
   if (!value) return "Clôture le 1er décembre 2026 à 23:59:59 GMT";
   const date = new Date(value);
@@ -203,6 +227,7 @@ function renderBallot(data, isDemo = false) {
     }
     if (isDemo) {
       sessionStorage.setItem(demoSubmittedKey, "1");
+      await playBallAnimation("outro");
       renderDemoReceipt();
       return;
     }
@@ -214,6 +239,7 @@ function renderBallot(data, isDemo = false) {
       await api("submitBallot", { session: sessionToken, selections });
       sessionStorage.removeItem(sessionKey);
       sessionToken = "";
+      await playBallAnimation("outro");
       renderState({ icon: "✓", title: "Vote soumis", message: "Merci, ton vote a bien été enregistré. Ce lien a expiré et ne peut plus être utilisé." });
     } catch (error) {
       sendButton.disabled = false;
@@ -243,6 +269,7 @@ async function loadBallot() {
 }
 
 async function start() {
+  await playBallAnimation("intro");
   if (demoMode) {
     if (sessionStorage.getItem(demoSubmittedKey) === "1") {
       renderDemoReceipt();
