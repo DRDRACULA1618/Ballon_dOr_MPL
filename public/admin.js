@@ -70,17 +70,17 @@ function renderDashboard(nextState, links = null) {
     ? `<aside class="notice"><span class="notice-icon">!</span><div><strong>Le catalogue comporte des éléments à vérifier.</strong><ul>${state.pending.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul><p>Confirme les catégories et les noms avant de partager les liens du scrutin.</p></div></aside>`
     : `<p class="status-good">Catalogue chargé · ${state.categoryCount} catégories · ${state.nominationCount} nominés.</p>`;
   const closeDate = state.closesAt ? new Date(state.closesAt).toLocaleString("fr-FR", { timeZone:"Africa/Abidjan" }) : "à définir";
-  root.innerHTML = `<div class="admin-intro"><p class="eyebrow">LE CLUB MPL 11 · ÉDITION 2026</p><h1>Scrutin officiel</h1><p>Crée autant de liens individuels que nécessaire. Chaque lien est utilisable une fois et expire après le vote ou à la clôture du scrutin.</p></div>
+  root.innerHTML = `<div class="admin-intro"><p class="eyebrow">LE CLUB MPL 11 · ÉDITION 2026</p><p class="admin-message" id="admin-message" role="status"></p><h1>Scrutin officiel</h1><p>Crée autant de liens individuels que nécessaire. Chaque lien est utilisable une fois et expire après le vote ou à la clôture du scrutin.</p></div>
     <div class="demo-ribbon">MODE RÉEL — les votes officiels sont enregistrés dans Cloudflare D1 et comptés séparément des anciens bulletins de test.</div>
     ${warning}
     <section class="admin-panel"><h2>État du scrutin</h2><div class="live-stats"><p><strong>${state.officialBallots}</strong><span>votes officiels</span></p><p><strong>${state.officialLinks}</strong><span>liens non utilisés</span></p><p><strong>${state.testBallots}</strong><span>anciens tests isolés</span></p></div><p class="field-note">Clôture configurée : ${escapeHtml(closeDate)} · fuseau Abidjan.</p><button class="admin-button secondary" id="refresh-state" type="button">Actualiser l’état</button></section>
-    <section class="admin-panel"><h2>Gérer les noms et les photos</h2><p>Corrige les noms par catégorie, puis dépose chaque portrait sur la ligne du nominé correspondant. Les changements apparaissent sur le bulletin public.</p><div id="nominee-manager" class="nominee-manager"></div></section>
+    <details class="admin-panel admin-collapsible photo-manager-panel" id="photo-manager-panel" open><summary><span><strong>Gérer les joueurs, alias et photos</strong><small>Répartis les portraits et corrige les alias</small></span><span class="photo-summary-count">${state.remainingPhotoCount ?? state.participantCount ?? 0} photos restantes / ${state.participantCount ?? 0} participants</span></summary><div class="photo-manager-content"><p>Glisse une photo de la galerie sur un participant. Un alias partagé entre plusieurs catégories reçoit la même photo partout. Les ajouts et corrections sont publiés pour les bulletins ouverts.</p><div id="nominee-manager" class="nominee-manager"></div></div></details>
     <section class="admin-panel"><h2>Liens personnels de vote</h2><p>Les liens générés restent disponibles dans cet espace après reconnexion. Tu peux désactiver chaque lien séparément ou en ajouter de nouveaux sans invalider les liens existants. Choisis entre 1 et 1 000 liens par création ; le nombre total n’est pas plafonné.</p><div class="admin-row link-create-row"><label class="field quantity-field" for="link-count">Nombre de liens à ajouter<input id="link-count" type="number" min="1" max="1000" step="1" value="7" /></label><button class="admin-button" id="create-official-links" type="button">Créer les liens</button><span class="admin-message" id="links-message" role="status"></span></div><div id="generated-links" class="generated-links" hidden></div></section>
     <section class="admin-panel"><h2>Résultats officiels</h2><p>Les résultats sont agrégés par catégorie. Les choix individuels ne sont pas dévoilés.</p><div class="admin-row"><button class="admin-button secondary" id="load-results" type="button">Charger les résultats</button><button class="admin-button secondary" id="export-results" type="button" hidden>Exporter en CSV</button></div><div id="results-content" class="admin-results"></div></section>
     <section class="admin-panel"><h2>Clôture</h2><p>La clôture désactive immédiatement les liens encore ouverts.</p><button class="admin-button danger" id="close-vote" type="button" ${state.isOpen ? "" : "disabled"}>Clôturer le scrutin</button><span class="admin-message" id="close-message" role="status"></span></section>
     <p><a href="./">← Retour à la page publique</a></p>`;
   renderLinks(state.links || [], state.closesAt);
-  renderNomineeManager(state.categories || []);
+  renderNomineeManager(state.participants || [], state.photoLibrary || [], state);
   if (resultData) renderResults(resultData);
   document.querySelector("#refresh-state").addEventListener("click", refreshState);
   document.querySelector("#create-official-links").addEventListener("click", createOfficialLinks);
@@ -158,43 +158,107 @@ document.querySelector("#login-form").addEventListener("submit", async (event) =
 });
 
 
-function renderNomineeManager(categories) {
+function renderNomineeManager(participants, photoLibrary, dashboardState) {
   const target = document.querySelector("#nominee-manager");
   if (!target) return;
-  target.innerHTML = categories.map((category) => `
-    <details class="nominee-admin-category" open>
-      <summary><span>${escapeHtml(category.title)}</span><small>${category.nominees.length} nominés</small></summary>
-      <div class="nominee-admin-list">${category.nominees.map((nominee) => `
-        <article class="nominee-admin-row" data-category-id="${escapeHtml(category.id)}" data-nominee-id="${escapeHtml(nominee.id)}">
-          <div class="nominee-admin-photo">${nominee.photoUrl ? `<img src="${escapeHtml(nominee.photoUrl)}" alt="Photo de ${escapeHtml(nominee.name)}">` : `<span aria-hidden="true">${escapeHtml(nominee.name.trim().slice(0,1).toUpperCase() || "?")}</span>`}</div>
-          <div class="nominee-admin-fields"><label>Nom du nominé<input class="nominee-name-input" type="text" maxlength="80" value="${escapeHtml(nominee.name)}"></label><span class="nominee-photo-hint">Photo individuelle · carré conseillé</span></div>
-          <div class="nominee-admin-actions"><button class="admin-button secondary save-nominee-name" type="button">Enregistrer le nom</button><label class="admin-button secondary nominee-photo-pick">Choisir une photo<input class="nominee-photo-input" type="file" accept="image/*"></label></div>
-          <div class="nominee-dropzone" tabindex="0" role="button" aria-label="Déposer une photo pour ${escapeHtml(nominee.name)}">Déposer la photo ici</div>
-          <span class="nominee-admin-message" role="status"></span>
-        </article>`).join("")}</div>
-    </details>`).join("");
+  const selectedPhoto = window.selectedLibraryPhotoId || "";
+  target.innerHTML = `
+    <div class="photo-progress" role="status"><strong>${dashboardState.remainingPhotoCount ?? 0}</strong><span>photos restantes</span><span class="photo-progress-divider">/</span><strong>${dashboardState.participantCount ?? participants.length}</strong><span>participants</span><span class="photo-progress-filled">${dashboardState.assignedParticipantCount ?? 0} photo(s) attribuée(s)</span></div>
+    <div class="photo-manager-columns">
+      <section class="alias-board"><header><h3>Participants et alias</h3><p>Chaque carte accepte une photo par glisser-déposer.</p></header>
+        <div class="alias-board-list">${participants.map((person) => `
+          <article class="alias-card" data-alias="${escapeHtml(person.name)}">
+            <div class="alias-card-photo">${person.photoUrl ? `<img src="${escapeHtml(person.photoUrl)}" alt="Portrait de ${escapeHtml(person.name)}">` : `<span>${escapeHtml(person.name.trim().slice(0,1).toUpperCase() || "?")}</span>`}</div>
+            <div class="alias-card-info"><label>Alias<input class="alias-name-input" maxlength="80" value="${escapeHtml(person.name)}"></label><small>${person.nomineeIds.length} nomination(s) · ${person.categoryIds.map((id) => escapeHtml(dashboardState.categories.find((c) => c.id === id)?.title || id)).join(" · ")}</small></div>
+            <div class="alias-card-actions"><button class="admin-button secondary save-alias" type="button">Corriger l’alias</button><button class="admin-button assign-selected-photo" type="button" ${selectedPhoto ? "" : "disabled"}>Associer la photo choisie</button></div>
+            <div class="alias-drop-target" tabindex="0" role="button">Déposer la photo ici</div>
+          </article>`).join("") || `<p class="field-note">Aucun participant dans le catalogue.</p>`}</div>
+      </section>
+      <section class="photo-library-board"><header><div><h3>Galerie des photos reçues</h3><p>${photoLibrary.length} photo(s) dans la galerie. Les portraits ajoutés ici sont carrés et pixelisés pour garder le rendu rétro.</p></div><label class="admin-button secondary add-photo-button">Ajouter des photos<input id="add-participant-photos" type="file" accept="image/*" multiple></label></header>
+        <div class="photo-library-grid">${photoLibrary.map((photo) => `
+          <article class="library-photo-card ${photo.id === selectedPhoto ? "is-selected" : ""}" draggable="true" data-photo-id="${escapeHtml(photo.id)}" tabindex="0" role="button" aria-label="Photo ${escapeHtml(photo.name)}${photo.assignedAlias ? ", associée à " + escapeHtml(photo.assignedAlias) : ", non attribuée"}">
+            <div class="library-photo-square"><img src="${photo.photoData}" alt="" loading="lazy" draggable="false"></div>
+            <strong>${escapeHtml(photo.name)}</strong>
+            <small>${photo.assignedAlias ? "Associée · " + escapeHtml(photo.assignedAlias) : "À attribuer"}</small>
+          </article>`).join("") || `<div class="photo-library-empty"><strong>Aucune photo dans la galerie</strong><span>Ajoute les portraits reçus avec le bouton ci-dessus.</span></div>`}</div>
+      </section>
+    </div>`;
 
-  target.querySelectorAll(".nominee-admin-row").forEach((row) => {
-    const input = row.querySelector(".nominee-photo-input");
-    const drop = row.querySelector(".nominee-dropzone");
-    row.querySelector(".save-nominee-name").addEventListener("click", () => saveNomineeName(row));
-    input.addEventListener("change", () => { if (input.files?.[0]) uploadNomineePhoto(row, input.files[0]); });
+  target.querySelectorAll(".library-photo-card").forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      event.dataTransfer?.setData("text/plain", card.dataset.photoId);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+    });
+    card.addEventListener("click", () => {
+      window.selectedLibraryPhotoId = card.dataset.photoId;
+      renderNomineeManager(participants, photoLibrary, dashboardState);
+    });
+    card.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); card.click(); } });
+  });
+  target.querySelectorAll(".alias-card").forEach((card) => {
+    const drop = card.querySelector(".alias-drop-target");
+    card.querySelector(".save-alias").addEventListener("click", () => saveAlias(card));
+    card.querySelector(".assign-selected-photo").addEventListener("click", () => assignPhoto(card, selectedPhoto));
     drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("is-dragging"); });
     drop.addEventListener("dragleave", () => drop.classList.remove("is-dragging"));
     drop.addEventListener("drop", (event) => {
       event.preventDefault(); drop.classList.remove("is-dragging");
-      const file = event.dataTransfer?.files?.[0];
-      if (file) uploadNomineePhoto(row, file);
+      assignPhoto(card, event.dataTransfer?.getData("text/plain"));
     });
-    drop.addEventListener("click", () => input.click());
-    drop.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); input.click(); } });
+    drop.addEventListener("click", () => { if (selectedPhoto) assignPhoto(card, selectedPhoto); });
+    drop.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && selectedPhoto) { event.preventDefault(); assignPhoto(card, selectedPhoto); } });
   });
+  target.querySelector("#add-participant-photos").addEventListener("change", (event) => addPhotoFiles([...event.target.files]));
 }
 
-function nomineeMessage(row, message, error = false) {
-  const node = row.querySelector(".nominee-admin-message");
-  node.textContent = message;
-  node.classList.toggle("error", error);
+function managerMessage(message, error = false) {
+  showMessage("admin-message", message, error);
+}
+
+async function saveAlias(card) {
+  const oldAlias = card.dataset.alias;
+  const name = card.querySelector(".alias-name-input").value.trim();
+  if (!name) return managerMessage("Un alias ne peut pas être vide.", true);
+  const button = card.querySelector(".save-alias");
+  button.disabled = true;
+  try {
+    const result = await api("adminRenameAlias", { oldAlias, name });
+    window.selectedLibraryPhotoId = "";
+    resultData = null;
+    renderDashboard(await api("adminState"));
+    managerMessage(`Alias corrigé dans ${result.changed} nomination(s).`);
+  } catch (error) { managerMessage(error.message, true); button.disabled = false; }
+}
+
+async function assignPhoto(card, photoId) {
+  if (!photoId) return managerMessage("Choisis une photo dans la galerie ou dépose-la sur le participant.", true);
+  const aliasName = card.dataset.alias;
+  const button = card.querySelector(".assign-selected-photo");
+  button.disabled = true;
+  try {
+    const result = await api("adminAssignPhotoToAlias", { photoId, aliasName });
+    window.selectedLibraryPhotoId = "";
+    resultData = null;
+    renderDashboard(await api("adminState"));
+    managerMessage(`Photo associée à « ${result.aliasName} » pour ${result.nominations} nomination(s).`);
+  } catch (error) { managerMessage(error.message, true); button.disabled = false; }
+}
+
+async function addPhotoFiles(files) {
+  if (!files.length) return;
+  const input = document.querySelector("#add-participant-photos");
+  if (input) input.disabled = true;
+  let uploaded = 0;
+  try {
+    for (const file of files) {
+      const photoData = await imageDataUrl(file);
+      await api("adminAddPhoto", { photoId: crypto.randomUUID(), name: file.name.split(".").slice(0, -1).join(".") || file.name, photoData });
+      uploaded++;
+    }
+    renderDashboard(await api("adminState"));
+    managerMessage(`${uploaded} photo(s) ajoutée(s) à la galerie. Fais glisser chaque portrait vers son alias.`);
+  } catch (error) { managerMessage(`${uploaded} photo(s) ajoutée(s). ${error.message}`, true); }
+  finally { const nextInput = document.querySelector("#add-participant-photos"); if (nextInput) nextInput.disabled = false; }
 }
 
 async function saveNomineeName(row) {
@@ -214,15 +278,21 @@ async function saveNomineeName(row) {
 async function imageDataUrl(file) {
   if (!file.type.startsWith("image/")) throw new Error("Choisis un fichier image.");
   const source = await createImageBitmap(file);
-  const size = 512;
+  const size = 384;
+  const pixelSize = 96;
+  const pixelCanvas = document.createElement("canvas");
+  pixelCanvas.width = pixelSize; pixelCanvas.height = pixelSize;
+  const pixelContext = pixelCanvas.getContext("2d");
+  const scale = Math.max(pixelSize / source.width, pixelSize / source.height);
+  const width = source.width * scale, height = source.height * scale;
+  pixelContext.drawImage(source, (pixelSize - width) / 2, (pixelSize - height) / 2, width, height);
+  source.close?.();
   const canvas = document.createElement("canvas");
   canvas.width = size; canvas.height = size;
   const context = canvas.getContext("2d");
-  const scale = Math.max(size / source.width, size / source.height);
-  const width = source.width * scale, height = source.height * scale;
-  context.drawImage(source, (size - width) / 2, (size - height) / 2, width, height);
-  source.close?.();
-  return canvas.toDataURL("image/webp", 0.82);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(pixelCanvas, 0, 0, size, size);
+  return canvas.toDataURL("image/webp", 0.9);
 }
 
 async function uploadNomineePhoto(row, file) {
