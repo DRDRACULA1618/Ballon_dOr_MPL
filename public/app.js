@@ -2,7 +2,7 @@ import { ballot } from "./data.js";
 
 const app = document.querySelector("#app");
 const params = new URLSearchParams(window.location.search);
-const demoMode = params.get("demo") === "1";
+const demoMode = false;
 const sessionKey = "mpl-vote-session";
 const demoSubmittedKey = "mpl-preview-vote-submitted";
 let inviteToken = "";
