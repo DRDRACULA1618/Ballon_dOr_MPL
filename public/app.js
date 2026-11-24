@@ -238,10 +238,51 @@ function renderBallot(data, isDemo = false) {
   updateProgress();
 }
 
+function applyLiveCatalog(data) {
+  for (const category of data.categories || []) {
+    const title = document.querySelector("#title-" + CSS.escape(category.id));
+    if (title) title.textContent = category.title;
+    for (const candidate of category.nominees || []) {
+      const input = app.querySelector(`input[type="radio"][name="${CSS.escape(category.id)}"][value="${CSS.escape(candidate.id)}"]`);
+      const card = input?.closest(".candidate");
+      if (!card) continue;
+      input.setAttribute("aria-label", candidate.name + " — " + category.title);
+      const name = card.querySelector(".candidate-name");
+      const subtitle = card.querySelector(".nominee-subtitle");
+      if (name) name.textContent = candidate.name;
+      if (subtitle) subtitle.textContent = category.title;
+      const avatar = card.querySelector(".nominee-avatar");
+      if (avatar) {
+        const next = candidate.photoUrl
+          ? `<img src="${escapeHtml(candidate.photoUrl)}" alt="" loading="lazy">`
+          : `<span>${escapeHtml(candidate.name.trim().slice(0,1).toUpperCase() || "?")}</span>`;
+        if (avatar.innerHTML !== next) avatar.innerHTML = next;
+      }
+    }
+  }
+}
+
+let liveCatalogTimer = null;
+function startLiveCatalogRefresh() {
+  if (liveCatalogTimer) window.clearInterval(liveCatalogTimer);
+  liveCatalogTimer = window.setInterval(async () => {
+    if (!sessionToken || document.visibilityState !== "visible") return;
+    try { applyLiveCatalog(await api("getBallot", { session: sessionToken })); }
+    catch (error) {
+      if (error.status === 401 || error.status === 410) {
+        window.clearInterval(liveCatalogTimer);
+        liveCatalogTimer = null;
+        await loadBallot();
+      }
+    }
+  }, 5000);
+}
+
 async function loadBallot() {
   try {
     const result = await api("getBallot", { session: sessionToken });
     renderBallot(result);
+    startLiveCatalogRefresh();
   } catch (error) {
     if (error.status === 401 || error.status === 410) {
       sessionStorage.removeItem(sessionKey);
