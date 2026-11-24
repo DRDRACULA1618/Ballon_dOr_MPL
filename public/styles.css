@@ -830,3 +830,112 @@ body.ballot-page {
 .admin-page .result-line { color:#cbd5e1; }
 .admin-page a { color:#fcd49b; }
 @media(max-width:640px) { .admin-page .site-topbar { padding:0 14px; } .admin-page .live-stats { grid-template-columns:1fr; } .admin-page .admin-main { padding-top:24px; } }
+
+
+/* Liquid-glass gala finish: warm trophy gold edged with restrained RGB light. */
+.ballot-page {
+  background:
+    radial-gradient(ellipse at 8% 28%, rgba(51,191,255,.10), transparent 32%),
+    radial-gradient(ellipse at 92% 18%, rgba(183,91,255,.11), transparent 35%),
+    radial-gradient(ellipse at 50% 0%, rgba(231,174,61,.15), transparent 44%),
+    #080b12;
+}
+.ballot-page .site-topbar {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(110deg, rgba(14,18,27,.82), rgba(34,29,24,.72)) padding-box,
+    linear-gradient(105deg, rgba(82,214,255,.72), rgba(255,255,255,.2) 28%, rgba(245,196,86,.9) 52%, rgba(190,97,255,.56) 82%, rgba(82,214,255,.65)) border-box;
+  backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: 0 12px 42px rgba(0,0,0,.28), 0 0 22px rgba(68,195,255,.08), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.ballot-page .hero {
+  background:
+    radial-gradient(ellipse at 79% 34%, rgba(238,181,59,.23), transparent 22%),
+    radial-gradient(ellipse at 98% 22%, rgba(79,190,255,.13), transparent 28%),
+    linear-gradient(118deg, rgba(8,11,18,.97), rgba(20,24,34,.9) 52%, rgba(48,34,14,.88));
+}
+.ballot-page .progress-panel,
+.ballot-page .category-card,
+.ballot-page .candidate,
+.ballot-page .auth-view,
+.ballot-page .state-icon {
+  backdrop-filter: blur(22px) saturate(145%);
+}
+.ballot-page .progress-panel {
+  border: 1px solid rgba(238,205,126,.32);
+  background:
+    linear-gradient(118deg, rgba(27,36,51,.68), rgba(19,24,34,.64)) padding-box,
+    linear-gradient(112deg, rgba(68,199,255,.65), rgba(255,255,255,.12) 30%, rgba(248,197,83,.82) 58%, rgba(179,95,255,.52)) border-box;
+  box-shadow: 0 20px 48px rgba(0,0,0,.3), 0 0 24px rgba(65,189,255,.08), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.ballot-page .category-card {
+  isolation: isolate;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(128deg, rgba(30,39,54,.72), rgba(17,22,32,.75)) padding-box,
+    linear-gradient(112deg, rgba(59,191,255,.46), rgba(255,255,255,.11) 28%, rgba(237,190,87,.63) 60%, rgba(183,91,255,.36)) border-box;
+  box-shadow: 0 15px 36px rgba(0,0,0,.22), 0 0 22px rgba(67,190,255,.055), inset 0 1px 0 rgba(255,255,255,.11);
+}
+.ballot-page .category-card:hover {
+  border-color: transparent;
+  background:
+    linear-gradient(128deg, rgba(38,49,66,.82), rgba(20,25,36,.83)) padding-box,
+    linear-gradient(112deg, rgba(77,210,255,.83), rgba(255,255,255,.25) 28%, rgba(255,213,106,.92) 60%, rgba(194,113,255,.66)) border-box;
+  box-shadow: 0 18px 40px rgba(0,0,0,.3), 0 0 24px rgba(67,190,255,.11), inset 0 1px 0 rgba(255,255,255,.15);
+}
+.ballot-page .category-card::before { z-index: 1; background: linear-gradient(180deg, transparent, #51d5ff 22%, #f5cb6b 52%, #c377ff 78%, transparent); box-shadow: 0 0 11px rgba(79,204,255,.58); }
+.ballot-page .candidate {
+  border: 1px solid rgba(206,221,239,.18);
+  background: linear-gradient(120deg, rgba(237,244,255,.075), rgba(127,150,180,.035));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 7px 18px rgba(0,0,0,.12);
+}
+.ballot-page .candidate:hover {
+  border-color: rgba(83,205,255,.57);
+  background: linear-gradient(120deg, rgba(77,195,255,.12), rgba(255,255,255,.045));
+  box-shadow: 0 0 20px rgba(69,187,255,.12), inset 0 1px 0 rgba(255,255,255,.16);
+}
+.ballot-page .candidate:has(input:checked),
+.ballot-page .rank-candidate.selected {
+  border-color: rgba(255,211,111,.93);
+  background: linear-gradient(120deg, rgba(223,167,57,.22), rgba(73,127,165,.12));
+  box-shadow: inset 0 0 0 1px rgba(255,223,143,.22), 0 0 23px rgba(255,190,62,.18), 0 0 30px rgba(56,193,255,.08);
+}
+.ballot-page .avatar {
+  border-color: rgba(241,210,143,.68);
+  box-shadow: 0 0 0 3px rgba(82,195,255,.08), 0 0 14px rgba(239,187,70,.15);
+}
+.ballot-page .primary-button {
+  border-color: rgba(255,243,201,.76);
+  background: linear-gradient(112deg, #ffe9a5, #e3a932 62%, #bb7a1d);
+  box-shadow: 0 10px 30px rgba(216,158,43,.25), 0 0 18px rgba(255,210,88,.14), inset 0 1px 0 rgba(255,255,255,.72);
+}
+.ballot-page .primary-button:hover:not(:disabled) { box-shadow: 0 13px 34px rgba(216,158,43,.35), 0 0 27px rgba(85,198,255,.2), inset 0 1px 0 rgba(255,255,255,.8); }
+.ballot-page .section-counter { border-color: rgba(102,208,255,.3); background: rgba(77,180,255,.055); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+.ballot-page .skip-animation { border-color: rgba(95,210,255,.48); box-shadow: 0 0 16px rgba(67,192,255,.12), inset 0 1px 0 rgba(255,255,255,.12); }
+.cinematic-screen {
+  background:
+    radial-gradient(ellipse at 50% 57%, rgba(233,170,44,.22), transparent 29%),
+    radial-gradient(ellipse at 17% 38%, rgba(45,191,255,.12), transparent 35%),
+    radial-gradient(ellipse at 85% 30%, rgba(186,91,255,.10), transparent 36%),
+    #05070c;
+}
+.cinematic-screen::before {
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 0 18%, rgba(248,213,144,.05) 18.2% 18.4%, transparent 18.7%),
+    linear-gradient(180deg, rgba(4,6,10,.2), transparent 40%, rgba(4,6,10,.54)),
+    repeating-linear-gradient(112deg, transparent 0 72px, rgba(255,255,255,.016) 73px 74px);
+}
+.cinematic-copy p { color: #f3cd78; text-shadow: 0 0 20px rgba(255,206,94,.34); }
+.cinematic-copy h1 { text-shadow: 0 0 28px rgba(250,202,91,.2), 0 5px 36px rgba(49,176,255,.14); }
+.ball-journey { filter: drop-shadow(0 0 36px rgba(240,180,59,.22)); }
+.ball-journey::before, .ball-journey::after {
+  border-top-color: rgba(255,216,119,.96);
+  border-bottom-color: rgba(78,210,255,.92);
+  box-shadow: 0 0 20px rgba(255,194,67,.14);
+}
+.ball-journey::after { border-top-color: rgba(83,213,255,.92); border-bottom-color: rgba(196,119,255,.8); }
+.cinematic-ball { filter: drop-shadow(0 0 23px rgba(245,187,65,.34)) drop-shadow(0 0 42px rgba(68,188,255,.15)) drop-shadow(0 24px 34px rgba(0,0,0,.62)); }
+.ball-shadow { background: radial-gradient(ellipse, rgba(248,191,72,.25), rgba(0,0,0,.64) 60%); }
+@media (max-width: 640px) {
+  .ballot-page .category-card { border-radius: 15px; }
+}
