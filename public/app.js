@@ -79,7 +79,29 @@ function renderDemoReceipt() {
 function playBallAnimation(direction) {
   return new Promise((resolve) => {
     const isOutro = direction === "outro";
-    app.innerHTML = `<section class="cinematic-screen ${isOutro ? "cinematic-outro" : "cinematic-intro"}" aria-label="${isOutro ? "Animation de fin du vote" : "Animation de bienvenue"}"><div class="cinematic-stars" aria-hidden="true"></div><div class="cinematic-light" aria-hidden="true"></div><div class="cinematic-copy"><p>${isOutro ? "MPL · BALLIN’ D’OR 2026" : "LE RENDEZ-VOUS DES CHAMPIONS"}</p><h1>${isOutro ? "Merci pour ton vote" : "Le CLUB MPL 11"}</h1><span>${isOutro ? "TON CHOIX ENTRE DANS L’HISTOIRE" : "MPL BALLIN’ D’OR · 2026"}</span></div><div class="ball-journey ${isOutro ? "ball-journey-out" : "ball-journey-in"}" aria-hidden="true"><div class="ball-shadow"></div><svg class="cinematic-ball" viewBox="0 0 220 220"><defs><radialGradient id="ballSurface" cx="32%" cy="25%"><stop stop-color="#fff"/><stop offset=".48" stop-color="#f5f5f3"/><stop offset=".82" stop-color="#d6d8dc"/><stop offset="1" stop-color="#858b94"/></radialGradient><clipPath id="ballClip"><circle cx="110" cy="110" r="91"/></clipPath></defs><circle cx="110" cy="110" r="92" fill="url(#ballSurface)" stroke="#f5f5f5" stroke-width="2"/><g clip-path="url(#ballClip)" fill="#090a0c" stroke="#f7f7f5" stroke-width="5" stroke-linejoin="round"><path d="m110 68 28 20-11 33h-34L82 88z"/><path d="m110 68 8-48 35-20 27 27-11 42-31 19z"/><path d="m82 88-46-9-23-34 20-35 42-4 25 27z"/><path d="m93 121-28 33-43 3-18-34 15-40 40-4z"/><path d="m127 121 28 33 43 3 18-34-15-40-40-4z"/><path d="m93 121 34 0 17 39-13 41-39 15-28-30 1-42z"/></g><ellipse cx="79" cy="53" rx="38" ry="17" fill="#fff" opacity=".36" transform="rotate(-33 79 53)"/><circle cx="110" cy="110" r="91" fill="none" stroke="rgba(255,255,255,.34)" stroke-width="1"/></svg></div><button class="skip-animation" type="button">Passer l’animation</button></section>`;
+    app.innerHTML = `<section class="cinematic-screen ${isOutro ? "cinematic-outro" : "cinematic-intro"}" aria-label="${isOutro ? "Animation de fin du vote" : "Animation de bienvenue"}"><div class="cinematic-stars" aria-hidden="true"></div><div class="cinematic-light" aria-hidden="true"></div><div class="cinematic-copy"><p>${isOutro ? "MPL · BALLIN’ D’OR 2026" : "CÉRÉMONIE DE REMISE"}</p><h1>${isOutro ? "Merci pour ton vote" : "Le CLUB MPL 11"}</h1><span>${isOutro ? "TON CHOIX ENTRE DANS L’HISTOIRE" : "UN TROPHÉE · SEPT VOTES"}</span></div><div class="ball-journey ${isOutro ? "ball-journey-out" : "ball-journey-in"}" aria-hidden="true"><div class="ball-shadow"></div><svg class="cinematic-ball" viewBox="0 0 220 220" role="img" aria-label="Ballon d’Or doré"><defs>
+<radialGradient id="ballSurface" cx="32%" cy="23%" r="78%"><stop stop-color="#fff9dc"/><stop offset=".16" stop-color="#f9dc8b"/><stop offset=".39" stop-color="#bf7b19"/><stop offset=".58" stop-color="#40220a"/><stop offset=".73" stop-color="#e8ae3d"/><stop offset=".88" stop-color="#7a470d"/><stop offset="1" stop-color="#170d06"/></radialGradient>
+<linearGradient id="goldFacet" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff6c8"/><stop offset=".25" stop-color="#dc9c2c"/><stop offset=".53" stop-color="#57300b"/><stop offset=".79" stop-color="#f3c454"/><stop offset="1" stop-color="#8a4d0d"/></linearGradient>
+<linearGradient id="goldRim" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#fff9cf"/><stop offset=".3" stop-color="#f0c45a"/><stop offset=".68" stop-color="#8a5116"/><stop offset="1" stop-color="#fff2b2"/></linearGradient>
+<radialGradient id="ballGlare" cx="0" cy="0" r="1" gradientTransform="translate(65 54) rotate(50) scale(69 44)" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity=".96"/><stop offset=".22" stop-color="#fff3bf" stop-opacity=".7"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<clipPath id="ballClip"><circle cx="110" cy="110" r="91"/></clipPath>
+<filter id="ballGlow"><feGaussianBlur stdDeviation="5"/></filter></defs>
+<circle cx="110" cy="110" r="99" fill="#f9c956" opacity=".14" filter="url(#ballGlow)"/>
+<circle cx="110" cy="110" r="93" fill="url(#ballSurface)" stroke="url(#goldRim)" stroke-width="3"/>
+<g clip-path="url(#ballClip)" stroke="url(#goldRim)" stroke-width="3" stroke-linejoin="round">
+<path fill="url(#goldFacet)" d="m110 71 32 21-12 37H91L78 92z"/>
+<path fill="#251507" d="m110 71 2-50 37-16 31 27-8 45-30 15z"/>
+<path fill="url(#goldFacet)" d="m78 92-43-12-20-36 25-32 43 7 27 52z"/>
+<path fill="#39200a" d="m91 129-31 29-43-7-16-38 22-37 43 16z"/>
+<path fill="url(#goldFacet)" d="m130 129 31 29 43-7 16-38-22-37-43 16z"/>
+<path fill="#4a2809" d="m91 129 39 0 19 40-18 40-40 15-34-35 3-31z"/>
+<path fill="url(#goldFacet)" d="m110 71 32 21-12 37H91L78 92z" opacity=".24"/>
+</g>
+<ellipse cx="75" cy="53" rx="45" ry="23" fill="url(#ballGlare)" transform="rotate(-30 75 53)"/>
+<path d="M48 75c11-27 36-45 63-47" fill="none" stroke="#fff9d8" stroke-opacity=".78" stroke-width="3" stroke-linecap="round"/>
+<circle cx="110" cy="110" r="91" fill="none" stroke="#fff7cf" stroke-opacity=".42" stroke-width="1"/>
+<g fill="#fff4c4" opacity=".9"><circle cx="57" cy="42" r="2"/><circle cx="144" cy="35" r="1.7"/><circle cx="169" cy="113" r="1.5"/><circle cx="72" cy="174" r="1.4"/></g>
+</svg></div><button class="skip-animation" type="button">Passer l’animation</button></section>`;
     const screen = app.querySelector(".cinematic-screen");
     const skip = app.querySelector(".skip-animation");
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
