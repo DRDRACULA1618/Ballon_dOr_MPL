@@ -130,12 +130,13 @@ async function adminState(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
   const settings = await getSettings(db);
-  const stats = await db.prepare(
-    "SELECT COUNT(*) AS total, SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS recent FROM ballots WHERE is_test = 1",
-  ).bind(new Date(Date.now() - TEST_LINK_LIFETIME_MS).toISOString()).first();
-  const last = await db.prepare(
-    "SELECT ballot_id, created_at, answers_json FROM ballots WHERE is_test = 1 ORDER BY created_at DESC LIMIT 1",
-  ).first();
+  const [testStats, liveStats, linkStats, latestLive] = await Promise.all([
+    db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 1").first(),
+    db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first(),
+    db.prepare("SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ?")
+      .bind(new Date().toISOString()).first(),
+    db.prepare("SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0").first(),
+  ]);
   return reply({
     ok: true,
     title: settings.title || ballot.title,
@@ -145,14 +146,18 @@ async function adminState(db, env, input, request) {
     categoryCount: ballot.categories.length,
     nominationCount: ballot.categories.reduce((count, category) => count + category.nominees.length, 0),
     pending: ballot.pending || [],
-    testBallots: Number(stats?.total || 0),
-    lastTestBallot: last ? { id: last.ballot_id, createdAt: last.created_at } : null,
+    testBallots: Number(testStats?.total || 0),
+    officialBallots: Number(liveStats?.total || 0),
+    officialLinks: Number(linkStats?.total || 0),
+    lastOfficialBallotAt: latestLive?.created_at || null,
   });
 }
 
 async function createTestLink(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
+  const liveBallots = await db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first();
+  if (Number(liveBallots?.total || 0) > 0) return fail(409, "Le scrutin officiel a déjà reçu des bulletins; le mode test est désactivé.");
   const token = randomToken();
   const tokenHash = await digest(token);
   const voterId = crypto.randomUUID();
@@ -161,7 +166,7 @@ async function createTestLink(db, env, input, request) {
   const expiresAt = new Date(now.getTime() + TEST_LINK_LIFETIME_MS).toISOString();
   const voterName = String(input.name || "Vote test").trim().slice(0, 100) || "Vote test";
   const email = `test-${voterId}@invalid.local`;
-  const batch = await db.batch([
+  await db.batch([
     db.prepare("INSERT INTO voters (id, name, email, active, voted, is_test, created_at) VALUES (?, ?, ?, 1, 0, 1, ?)")
       .bind(voterId, voterName, email, createdAt),
     db.prepare("INSERT INTO invite_links (token_hash, voter_id, expires_at, used, created_at) VALUES (?, ?, ?, 0, ?)")
@@ -173,15 +178,86 @@ async function createTestLink(db, env, input, request) {
     db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'createTestLink', ?)")
       .bind(crypto.randomUUID(), createdAt, JSON.stringify({ voterId, expiresAt })),
   ]);
-  if (!batch) return fail(503, "Impossible de créer le lien test.");
   const url = new URL(request.url);
-  const testUrl = `${url.origin}/#t=${encodeURIComponent(token)}`;
-  return reply({ ok: true, testUrl, expiresAt });
+  return reply({ ok: true, testUrl: `${url.origin}/#t=${encodeURIComponent(token)}`, expiresAt });
+}
+
+async function createOfficialLinks(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const closesAtMs = Date.parse(ballot.closesAt || "");
+  if (!Number.isFinite(closesAtMs) || closesAtMs <= Date.now()) return fail(409, "La date de clôture du bulletin est passée ou invalide.");
+  const alreadyVoted = await db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first();
+  if (Number(alreadyVoted?.total || 0) > 0) return fail(409, "Le scrutin officiel a déjà commencé. Les liens existants ne peuvent plus être remplacés.");
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(closesAtMs).toISOString();
+  const links = Array.from({ length: 7 }, (_, index) => {
+    const token = randomToken();
+    return { token, tokenHash: "", voterId: crypto.randomUUID(), name: `Bulletin ${String(index + 1).padStart(2, "0")}` };
+  });
+  for (const link of links) link.tokenHash = await digest(link.token);
+  const retireOldLinks = [
+    db.prepare("UPDATE invite_links SET used = 1 WHERE voter_id IN (SELECT id FROM voters WHERE is_test = 0 AND active = 1 AND voted = 0)"),
+    db.prepare("UPDATE voters SET active = 0 WHERE is_test = 0 AND active = 1 AND voted = 0"),
+  ];
+  const inserts = links.flatMap((link) => [
+    db.prepare("INSERT INTO voters (id, name, email, active, voted, is_test, created_at) VALUES (?, ?, ?, 1, 0, 0, ?)")
+      .bind(link.voterId, link.name, `bulletin-${link.voterId}@invalid.local`, createdAt),
+    db.prepare("INSERT INTO invite_links (token_hash, voter_id, expires_at, used, created_at) VALUES (?, ?, ?, 0, ?)")
+      .bind(link.tokenHash, link.voterId, expiresAt, createdAt),
+  ]);
+  await db.batch([
+    ...retireOldLinks,
+    ...inserts,
+    db.prepare("INSERT INTO settings (key, value) VALUES ('test_mode', '0') ON CONFLICT(key) DO UPDATE SET value = '0'"),
+    db.prepare("INSERT INTO settings (key, value) VALUES ('is_open', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"),
+    db.prepare("INSERT INTO settings (key, value) VALUES ('closes_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(expiresAt),
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'createOfficialLinks', ?)")
+      .bind(crypto.randomUUID(), createdAt, JSON.stringify({ count: links.length, expiresAt })),
+  ]);
+  const origin = new URL(request.url).origin;
+  return reply({
+    ok: true,
+    expiresAt,
+    links: links.map((link) => ({ name: link.name, url: `${origin}/#t=${encodeURIComponent(link.token)}` })),
+  });
+}
+
+async function adminResults(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const rows = await db.prepare("SELECT answers_json FROM ballots WHERE is_test = 0").all();
+  const counts = new Map();
+  for (const category of ballot.categories) {
+    const categoryCounts = new Map(category.nominees.map((nominee) => [nominee.id, 0]));
+    counts.set(category.id, categoryCounts);
+  }
+  for (const row of rows.results || []) {
+    let selections;
+    try { selections = JSON.parse(row.answers_json); } catch { continue; }
+    for (const [categoryId, nomineeId] of Object.entries(selections || {})) {
+      const categoryCounts = counts.get(categoryId);
+      if (categoryCounts?.has(nomineeId)) categoryCounts.set(nomineeId, categoryCounts.get(nomineeId) + 1);
+    }
+  }
+  return reply({
+    ok: true,
+    totalBallots: (rows.results || []).length,
+    categories: ballot.categories.map((category) => ({
+      id: category.id,
+      title: category.title,
+      nominees: category.nominees.map((nominee) => ({
+        id: nominee.id,
+        name: nominee.name,
+        votes: counts.get(category.id).get(nominee.id) || 0,
+      })),
+    })),
+  });
 }
 
 async function claimInvite(db, input) {
   const token = String(input.token || "");
-  if (!/^[a-f0-9]{64}$/i.test(token)) return fail(401, "Lien de test invalide ou expiré.");
+  if (!/^[a-f0-9]{64}$/i.test(token)) return fail(401, "Lien invalide ou expiré.");
   const tokenHash = await digest(token);
   const row = await db.prepare(`
     SELECT l.token_hash, l.expires_at, l.used, v.id AS voter_id, v.voted, v.active, v.is_test
@@ -189,24 +265,26 @@ async function claimInvite(db, input) {
     WHERE l.token_hash = ?
   `).bind(tokenHash).first();
   const settings = await getSettings(db);
-  if (!row || row.is_test !== 1 || row.active !== 1 || row.voted === 1 || row.used === 1
-      || Date.parse(row.expires_at) <= Date.now() || settings.test_mode !== "1"
+  if (!row || row.active !== 1 || row.voted === 1 || row.used === 1
+      || Date.parse(row.expires_at) <= Date.now()
+      || settings.test_mode !== String(row.is_test)
       || settings.is_open !== "1" || Date.parse(settings.closes_at || "") <= Date.now()) {
-    return fail(410, "Ce lien de test a expiré ou a déjà servi à voter.");
+    return fail(410, "Ce lien a expiré ou a déjà servi à voter.");
   }
 
   const session = randomToken();
   const sessionHash = await digest(session);
+  const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
   const created = await db.prepare(`
     INSERT INTO sessions (session_hash, voter_id, link_hash, expires_at, used, created_at)
     SELECT ?, ?, ?, ?, 0, ?
     WHERE EXISTS (
       SELECT 1 FROM invite_links l JOIN voters v ON v.id = l.voter_id
-      WHERE l.token_hash = ? AND l.used = 0 AND l.expires_at > ? AND v.voted = 0 AND v.active = 1 AND v.is_test = 1
+      WHERE l.token_hash = ? AND l.used = 0 AND l.expires_at > ? AND v.voted = 0 AND v.active = 1 AND v.is_test = ?
     )
-  `).bind(sessionHash, row.voter_id, tokenHash, expiresAt, new Date().toISOString(), tokenHash, new Date().toISOString()).run();
-  if (!created.meta?.changes) return fail(410, "Ce lien de test a expiré ou a déjà servi à voter.");
+  `).bind(sessionHash, row.voter_id, tokenHash, expiresAt, now, tokenHash, now, Number(row.is_test)).run();
+  if (!created.meta?.changes) return fail(410, "Ce lien a expiré ou a déjà servi à voter.");
   return reply({ ok: true, session, expiresAt });
 }
 
@@ -222,50 +300,57 @@ async function getBallot(db, input) {
     WHERE s.session_hash = ?
   `).bind(sessionHash).first();
   const settings = await getSettings(db);
-  if (!row || row.is_test !== 1 || row.active !== 1 || row.voted === 1 || row.link_used === 1 || row.session_used === 1
+  if (!row || row.active !== 1 || row.voted === 1 || row.link_used === 1 || row.session_used === 1
       || Date.parse(row.session_expires) <= Date.now() || Date.parse(row.link_expires) <= Date.now()) {
-    return fail(401, "La session de vote a expiré. Ouvre à nouveau le lien de test.");
+    return fail(401, "La session de vote a expiré. Ouvre à nouveau ton lien personnel.");
   }
-  if (settings.test_mode !== "1" || settings.is_open !== "1" || Date.parse(settings.closes_at || "") <= Date.now()) {
-    return fail(410, "La période du test est terminée.");
+  if (settings.test_mode !== String(row.is_test) || settings.is_open !== "1" || Date.parse(settings.closes_at || "") <= Date.now()) {
+    return fail(410, "La période du scrutin est terminée.");
   }
   return reply({ ok: true, title: ballot.title, closesAt: settings.closes_at, categories: ballot.categories });
 }
 
 async function submitBallot(db, input) {
-  const settings = await getSettings(db);
-  if (settings.test_mode !== "1" || settings.is_open !== "1" || Date.parse(settings.closes_at || "") <= Date.now()) {
-    return fail(410, "La période du test est terminée.");
-  }
-  const selectionError = validateSelections(input.selections, ballot.categories);
-  if (selectionError) return fail(400, selectionError);
   const sessionToken = String(input.session || "");
   if (!/^[a-f0-9]{64}$/i.test(sessionToken)) return fail(401, "La session de vote a expiré.");
   const sessionHash = await digest(sessionToken);
+  const sessionInfo = await db.prepare(`
+    SELECT v.is_test FROM sessions s
+    JOIN invite_links l ON l.token_hash = s.link_hash
+    JOIN voters v ON v.id = s.voter_id
+    WHERE s.session_hash = ?
+  `).bind(sessionHash).first();
+  if (!sessionInfo) return fail(401, "La session de vote a expiré.");
+  const isTest = Number(sessionInfo.is_test);
+  const settings = await getSettings(db);
+  if (settings.test_mode !== String(isTest) || settings.is_open !== "1" || Date.parse(settings.closes_at || "") <= Date.now()) {
+    return fail(410, "La période du scrutin est terminée.");
+  }
+  const selectionError = validateSelections(input.selections, ballot.categories);
+  if (selectionError) return fail(400, selectionError);
   const ballotId = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   const catalogHash = await digest(JSON.stringify(ballot));
+  const auditAction = isTest ? "submitTestBallot" : "submitOfficialBallot";
   const result = await db.batch([
     db.prepare(`
       INSERT OR IGNORE INTO ballots (ballot_id, voter_id, created_at, catalog_hash, answers_json, is_test)
-      SELECT ?, v.id, ?, ?, ?, 1
+      SELECT ?, v.id, ?, ?, ?, v.is_test
       FROM sessions s JOIN invite_links l ON l.token_hash = s.link_hash JOIN voters v ON v.id = s.voter_id
       WHERE s.session_hash = ? AND s.used = 0 AND s.expires_at > ?
-        AND l.used = 0 AND l.expires_at > ? AND v.active = 1 AND v.voted = 0 AND v.is_test = 1
-        AND (SELECT value FROM settings WHERE key = 'test_mode') = '1'
+        AND l.used = 0 AND l.expires_at > ? AND v.active = 1 AND v.voted = 0
+        AND v.is_test = ?
+        AND (SELECT value FROM settings WHERE key = 'test_mode') = ?
         AND (SELECT value FROM settings WHERE key = 'is_open') = '1'
         AND (SELECT value FROM settings WHERE key = 'closes_at') > ?
-    `).bind(ballotId, createdAt, catalogHash, JSON.stringify(input.selections), sessionHash, createdAt, createdAt, createdAt),
-    db.prepare("UPDATE voters SET voted = 1 WHERE id = (SELECT voter_id FROM ballots WHERE ballot_id = ?) AND voted = 0")
-      .bind(ballotId),
-    db.prepare("UPDATE invite_links SET used = 1 WHERE token_hash = (SELECT link_hash FROM sessions WHERE session_hash = ?) AND EXISTS (SELECT 1 FROM ballots WHERE ballot_id = ?)")
-      .bind(sessionHash, ballotId),
-    db.prepare("UPDATE sessions SET used = 1 WHERE session_hash = ? AND EXISTS (SELECT 1 FROM ballots WHERE ballot_id = ?)")
-      .bind(sessionHash, ballotId),
-    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) SELECT ?, ?, 'submitTestBallot', ? WHERE EXISTS (SELECT 1 FROM ballots WHERE ballot_id = ?)")
+    `).bind(ballotId, createdAt, catalogHash, JSON.stringify(input.selections), sessionHash, createdAt, createdAt, isTest, String(isTest), createdAt),
+    db.prepare("UPDATE voters SET voted = 1 WHERE id = (SELECT voter_id FROM ballots WHERE ballot_id = ?) AND voted = 0").bind(ballotId),
+    db.prepare("UPDATE invite_links SET used = 1 WHERE token_hash = (SELECT link_hash FROM sessions WHERE session_hash = ?) AND EXISTS (SELECT 1 FROM ballots WHERE ballot_id = ?)").bind(sessionHash, ballotId),
+    db.prepare("UPDATE sessions SET used = 1 WHERE session_hash = ? AND EXISTS (SELECT 1 FROM ballots WHERE ballot_id = ?)").bind(sessionHash, ballotId),
+    db.prepare(`INSERT INTO audit (event_id, created_at, action, details_json) SELECT ?, ?, '${auditAction}', ? WHERE EXISTS (SELECT 1 FROM ballots WHERE ballot_id = ?)`)
       .bind(crypto.randomUUID(), createdAt, JSON.stringify({ ballotId, catalogHash }), ballotId),
   ]);
-  if (!result[0]?.meta?.changes) return fail(409, "Ce lien a déjà servi à voter ou le test est fermé.");
+  if (!result[0]?.meta?.changes) return fail(409, "Ce lien a déjà servi à voter ou le scrutin est fermé.");
   return reply({ ok: true, receipt: ballotId });
 }
 
@@ -292,6 +377,8 @@ export async function onRequestPost({ request, env }) {
       case "submitBallot": return await submitBallot(env.DB, input);
       case "adminState": return await adminState(env.DB, env, input, request);
       case "adminCreateTestLink": return await createTestLink(env.DB, env, input, request);
+      case "adminCreateOfficialLinks": return await createOfficialLinks(env.DB, env, input, request);
+      case "adminResults": return await adminResults(env.DB, env, input, request);
       case "adminCloseVote": {
         const auth = await requireAdmin(request, env, input);
         if (auth.error) return auth.error;
