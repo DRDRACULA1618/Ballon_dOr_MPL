@@ -1099,3 +1099,28 @@ body.ballot-page {
   .ballot-page .category-card:hover,
   .ballot-page .primary-button:hover:not(:disabled) { transform: none; }
 }
+
+
+/* Admin nominee catalog: name correction and individual portrait assignment */
+.nominee-manager { display:grid; gap:1rem; margin-top:1.25rem; }
+.nominee-admin-category { border:1px solid rgba(243,192,125,.18); border-radius:1rem; background:rgba(10,15,28,.55); overflow:hidden; }
+.nominee-admin-category > summary { cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:1rem 1.1rem; font-weight:700; }
+.nominee-admin-category > summary small,.nominee-photo-hint { color:var(--text-muted); font-size:.78rem; }
+.nominee-admin-list { display:grid; gap:.65rem; padding:.25rem .8rem .8rem; }
+.nominee-admin-row { display:grid; grid-template-columns:64px minmax(150px,1fr) auto minmax(140px,.7fr); gap:.85rem; align-items:center; padding:.75rem; border:1px solid rgba(255,255,255,.09); border-radius:.85rem; background:rgba(14,18,29,.64); }
+.nominee-admin-photo { width:64px; aspect-ratio:1; display:grid; place-items:center; overflow:hidden; border-radius:.7rem; background:linear-gradient(145deg,rgba(243,192,125,.28),rgba(59,130,246,.24)); color:var(--gold-soft); font:1.35rem "Bebas Neue",Impact,sans-serif; }
+.nominee-admin-photo img { width:100%; height:100%; object-fit:cover; }
+.nominee-admin-fields { display:grid; gap:.4rem; min-width:0; }
+.nominee-admin-fields label { display:grid; gap:.35rem; font-size:.8rem; color:var(--text-secondary); }
+.nominee-admin-fields input { min-width:0; width:100%; border:1px solid rgba(255,255,255,.14); border-radius:.55rem; padding:.62rem .72rem; background:rgba(4,8,16,.62); color:var(--text-primary); }
+.nominee-admin-actions { display:flex; align-items:center; gap:.5rem; }
+.nominee-photo-pick { position:relative; overflow:hidden; cursor:pointer; white-space:nowrap; }
+.nominee-photo-pick input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.nominee-dropzone { padding:.8rem; text-align:center; border:1px dashed rgba(96,165,250,.45); border-radius:.7rem; color:var(--text-secondary); font-size:.82rem; cursor:pointer; transition:background .16s,border-color .16s,box-shadow .16s; }
+.nominee-dropzone.is-dragging,.nominee-dropzone.is-uploading { border-color:var(--gold-soft); background:rgba(243,192,125,.12); box-shadow:0 0 18px rgba(59,130,246,.2); }
+.nominee-admin-message { grid-column:2/-1; min-height:1em; font-size:.78rem; color:var(--text-muted); }
+.nominee-admin-message.error { color:#ff7c80; }
+.nominee-avatar { flex:0 0 auto; width:clamp(3.5rem,7vw,5rem); aspect-ratio:1; display:grid; place-items:center; overflow:hidden; border:1px solid rgba(243,192,125,.42); border-radius:50%; background:linear-gradient(145deg,rgba(243,192,125,.35),rgba(59,130,246,.3)); color:var(--gold-soft); font:1.8rem "Bebas Neue",Impact,sans-serif; box-shadow:inset 0 1px rgba(255,255,255,.18),0 0 18px rgba(59,130,246,.18); }
+.nominee-avatar img { width:100%; height:100%; object-fit:cover; image-rendering:pixelated; }
+.candidate-inner { align-items:center; }
+@media(max-width:800px) { .nominee-admin-row { grid-template-columns:54px 1fr; } .nominee-admin-photo { width:54px; } .nominee-admin-actions,.nominee-dropzone,.nominee-admin-message { grid-column:1/-1; } .nominee-admin-actions { flex-wrap:wrap; } }
