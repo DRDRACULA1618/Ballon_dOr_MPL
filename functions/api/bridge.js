@@ -259,6 +259,7 @@ async function adminState(db, env, input, request) {
     id: row.id, sourceKey: row.source_key, name: row.display_name, assignedAlias: row.assigned_alias,
     createdAt: row.created_at, photoData: 'data:' + row.mime_type + ';base64,' + row.data_base64,
     originalData: 'data:' + (row.original_mime_type || row.mime_type) + ';base64,' + (row.original_data_base64 || row.data_base64),
+    needsPixelation: !row.original_data_base64,
   }));
   const assignedParticipants = participants.filter((person) => person.photoUrl).length;
   const officialLinkItems = await Promise.all((linkRows.results || []).map(async (row) => {
@@ -418,6 +419,38 @@ async function adminAddPhoto(db, env, input, request) {
   await db.prepare('INSERT OR IGNORE INTO photo_library (id, source_key, display_name, mime_type, data_base64, original_mime_type, original_data_base64, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(id, sourceKey, displayName, match[1], match[2], originalMatch[1], originalMatch[2], createdAt).run();
   return reply({ ok: true, id, sourceKey });
+}
+
+
+async function adminPixelateLibraryPhoto(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const photoId = String(input.photoId || '');
+  const dataUrl = String(input.photoData || '');
+  const match = dataUrl.match(/^data:(image\/(?:webp|jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!photoId || !match || match[2].length > 900000) return fail(400, 'Version pixel art invalide ou trop volumineuse.');
+  const photo = await db.prepare('SELECT id, mime_type, data_base64, assigned_alias FROM photo_library WHERE id = ?').bind(photoId).first();
+  if (!photo) return fail(404, 'Cette photo n’est plus dans la galerie.');
+  const updatedAt = new Date().toISOString();
+  const writes = [
+    db.prepare('UPDATE photo_library SET original_mime_type = COALESCE(original_mime_type, mime_type), original_data_base64 = COALESCE(original_data_base64, data_base64), mime_type = ?, data_base64 = ? WHERE id = ?')
+      .bind(match[1], match[2], photoId),
+  ];
+  if (photo.assigned_alias) {
+    const settings = await getSettings(db);
+    const catalog = catalogFromSettings(settings);
+    const normalize = (value) => String(value || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+    for (const category of catalog.categories) for (const nominee of category.nominees) {
+      if (normalize(nominee.name) === normalize(photo.assigned_alias)) {
+        writes.push(db.prepare('UPDATE nominee_photos SET mime_type = ?, data_base64 = ?, updated_at = ? WHERE nominee_id = ?')
+          .bind(match[1], match[2], updatedAt, nominee.id));
+      }
+    }
+  }
+  writes.push(db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'pixelateLibraryPhoto', ?)")
+    .bind(crypto.randomUUID(), updatedAt, JSON.stringify({ photoId, assignedAlias: photo.assigned_alias || null })));
+  await db.batch(writes);
+  return reply({ ok: true, photoId });
 }
 
 async function adminDeletePhoto(db, env, input, request) {
@@ -672,6 +705,7 @@ export async function onRequestPost({ request, env }) {
       case "adminUpdateNomineeName": return await adminUpdateNomineeName(env.DB, env, input, request);
       case "adminSetNomineePhoto": return await adminSetNomineePhoto(env.DB, env, input, request);
       case "adminAddPhoto": return await adminAddPhoto(env.DB, env, input, request);
+      case "adminPixelateLibraryPhoto": return await adminPixelateLibraryPhoto(env.DB, env, input, request);
       case "adminDeletePhoto": return await adminDeletePhoto(env.DB, env, input, request);
       case "adminRenameAlias": return await adminRenameAlias(env.DB, env, input, request);
       case "adminAssignPhotoToAlias": return await adminAssignPhotoToAlias(env.DB, env, input, request);
