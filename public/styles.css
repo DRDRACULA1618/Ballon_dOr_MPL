@@ -939,3 +939,59 @@ body.ballot-page {
 @media (max-width: 640px) {
   .ballot-page .category-card { border-radius: 15px; }
 }
+
+
+/* Admin link ledger: recoverable links, explicit state, and individual revocation. */
+.admin-page .link-create-row { align-items: end; }
+.admin-page .quantity-field { flex: 0 1 230px; }
+.admin-page .quantity-field input {
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid rgba(111,201,255,.34);
+  border-radius: 11px;
+  background: rgba(7,11,22,.72);
+  color: #f5f7fa;
+}
+.admin-page .generated-links h3 { margin: 0 0 7px; color: #fcd49b; font-size: 16px; }
+.admin-page .generated-links-grid { display: grid; gap: 10px; }
+.admin-page .generated-link-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: 15px;
+  background:
+    linear-gradient(135deg, rgba(20,29,46,.75), rgba(9,13,24,.79)) padding-box,
+    linear-gradient(110deg, rgba(69,197,255,.44), rgba(255,255,255,.1) 35%, rgba(239,192,99,.55) 68%, rgba(178,100,255,.32)) border-box;
+  box-shadow: 0 12px 26px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.08);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+.admin-page .generated-link-top,
+.admin-page .generated-link-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-page .generated-link-top strong { color: #f5f7fa; font-size: 13px; }
+.admin-page .link-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; }
+.admin-page .link-status.available { color: #8ce0b1; }
+.admin-page .link-status.inactive { color: #ff8079; }
+.admin-page .link-status.unrecoverable { color: #ffd27b; }
+.admin-page .link-status.inactive span { font-size: 16px; font-weight: 900; }
+.admin-page .generated-link-url { min-width: 0; margin: 10px 0; }
+.admin-page .generated-link-url input {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 9px;
+  background: rgba(4,8,15,.62);
+  color: #e9eef7;
+  font-size: 11px;
+}
+.admin-page .link-unavailable { margin: 0; color: #94a3b8; font-size: 11px; line-height: 1.5; }
+.admin-page .generated-link-bottom small { color: #8e9aab; font-size: 10px; }
+.admin-page .generated-link-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-page .generated-link-actions .admin-button { min-height: 34px; padding: 0 11px; font-size: 10px; }
+@media(max-width:640px) {
+  .admin-page .generated-link-top,
+  .admin-page .generated-link-bottom { align-items: flex-start; flex-direction: column; }
+  .admin-page .generated-link-actions { width: 100%; }
+  .admin-page .link-create-row .quantity-field,
+  .admin-page .link-create-row > button { flex: 1 1 100%; width: 100%; }
+}
