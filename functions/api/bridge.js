@@ -107,6 +107,13 @@ async function ensureSchema(db) {
       answers_json TEXT NOT NULL,
       is_test INTEGER NOT NULL DEFAULT 0
     )`,
+    `CREATE TABLE IF NOT EXISTS nominee_photos (
+      nominee_id TEXT PRIMARY KEY,
+      category_id TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      data_base64 TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS audit (
       event_id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,
@@ -144,6 +151,13 @@ async function getSettings(db) {
   return Object.fromEntries((result.results || []).map(({ key, value }) => [key, value]));
 }
 
+function catalogFromSettings(settings) {
+  try {
+    const catalog = JSON.parse(settings.catalog_json || '');
+    if (catalog && Array.isArray(catalog.categories)) return catalog;
+  } catch {}
+  return ballot;
+}
 function validateSelections(selections, categories) {
   if (!selections || typeof selections !== "object" || Array.isArray(selections)) return "Le bulletin est incomplet.";
   if (Object.keys(selections).length !== categories.length) return "Choisis un nominé dans chaque catégorie.";
@@ -166,15 +180,25 @@ async function adminState(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
   const settings = await getSettings(db);
-  const [testStats, liveStats, linkStats, latestLive, linkRows] = await Promise.all([
+  const catalog = catalogFromSettings(settings);
+  const [testStats, liveStats, linkStats, latestLive, linkRows, photoRows] = await Promise.all([
     db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 1').first(),
     db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0').first(),
     db.prepare("SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ? AND (SELECT value FROM settings WHERE key = 'is_open') = '1'").bind(new Date().toISOString()).first(),
     db.prepare('SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0').first(),
     db.prepare('SELECT v.id AS id, v.name AS name, v.active AS active, v.voted AS voted, l.used AS used, l.expires_at AS expires_at, l.created_at AS created_at, l.token_ciphertext AS token_ciphertext, l.token_iv AS token_iv FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 ORDER BY l.created_at DESC').all(),
+    db.prepare('SELECT nominee_id, updated_at FROM nominee_photos').all(),
   ]);
   const now = Date.now();
   const origin = new URL(request.url).origin;
+  const photoVersions = new Map((photoRows.results || []).map((row) => [row.nominee_id, row.updated_at]));
+  const categories = catalog.categories.map((category) => ({
+    ...category,
+    nominees: category.nominees.map((nominee) => {
+      const version = photoVersions.get(nominee.id);
+      return { ...nominee, photoUrl: version ? '/api/nominee-photo?id=' + encodeURIComponent(nominee.id) + '&v=' + encodeURIComponent(version) : null };
+    }),
+  }));
   const officialLinkItems = await Promise.all((linkRows.results || []).map(async (row) => {
     let status = 'available';
     if (Number(row.voted) === 1) status = 'used';
@@ -191,20 +215,14 @@ async function adminState(db, env, input, request) {
     } else if (status === 'available') status = 'unrecoverable';
     return { id: row.id, name: row.name, status, url, expiresAt: row.expires_at, createdAt: row.created_at };
   }));
+  const nominationCount = categories.reduce((count, category) => count + category.nominees.length, 0);
   return reply({
-    ok: true,
-    title: settings.title || ballot.title,
+    ok: true, title: settings.title || catalog.title || ballot.title,
     isOpen: settings.is_open === '1' && Date.parse(settings.closes_at || '') > Date.now(),
-    testMode: settings.test_mode === '1',
-    closesAt: settings.closes_at || ballot.closesAt,
-    categoryCount: ballot.categories.length,
-    nominationCount: ballot.categories.reduce((count, category) => count + category.nominees.length, 0),
-    pending: ballot.pending || [],
-    testBallots: Number(testStats?.total || 0),
-    officialBallots: Number(liveStats?.total || 0),
-    officialLinks: Number(linkStats?.total || 0),
-    links: officialLinkItems,
-    lastOfficialBallotAt: latestLive?.created_at || null,
+    testMode: settings.test_mode === '1', closesAt: settings.closes_at || ballot.closesAt,
+    categoryCount: categories.length, nominationCount, categories, pending: catalog.pending || [],
+    testBallots: Number(testStats?.total || 0), officialBallots: Number(liveStats?.total || 0),
+    officialLinks: Number(linkStats?.total || 0), links: officialLinkItems, lastOfficialBallotAt: latestLive?.created_at || null,
   });
 }
 async function createTestLink(db, env, input, request) {
@@ -297,15 +315,57 @@ async function disableOfficialLink(db, env, input, request) {
   if (!result[0]?.meta?.changes) return fail(409, 'Ce lien n’est plus disponible ou a déjà été utilisé.');
   return reply({ ok: true });
 }
+async function adminUpdateNomineeName(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const categoryId = String(input.categoryId || '');
+  const nomineeId = String(input.nomineeId || '');
+  const name = String(input.name || '').trim().replace(/\s+/g, ' ');
+  if (!name || name.length > 80) return fail(400, 'Le nom doit contenir entre 1 et 80 caractères.');
+  const settings = await getSettings(db);
+  const catalog = catalogFromSettings(settings);
+  const category = catalog.categories.find((item) => item.id === categoryId);
+  const nominee = category?.nominees.find((item) => item.id === nomineeId);
+  if (!nominee) return fail(404, 'Ce nominé n’existe pas dans cette catégorie.');
+  nominee.name = name;
+  const catalogJson = JSON.stringify(catalog);
+  const catalogHash = await digest(catalogJson);
+  await db.batch([
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'catalog_json'").bind(catalogJson),
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'catalog_hash'").bind(catalogHash),
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'renameNominee', ?)").bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ categoryId, nomineeId, name })),
+  ]);
+  return reply({ ok: true, nomineeId, name });
+}
+
+async function adminSetNomineePhoto(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const categoryId = String(input.categoryId || '');
+  const nomineeId = String(input.nomineeId || '');
+  const settings = await getSettings(db);
+  const catalog = catalogFromSettings(settings);
+  const category = catalog.categories.find((item) => item.id === categoryId);
+  if (!category?.nominees.some((item) => item.id === nomineeId)) return fail(404, 'Ce nominé n’existe pas dans cette catégorie.');
+  const dataUrl = String(input.photoData || '');
+  const match = dataUrl.match(/^data:(image\/(?:webp|jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match || match[2].length > 1300000) return fail(400, 'Image invalide ou trop volumineuse. Choisis une image de moins de 1 Mo.');
+  const encoded = match[2];
+  const updatedAt = new Date().toISOString();
+  await db.batch([
+    db.prepare('INSERT INTO nominee_photos (nominee_id, category_id, mime_type, data_base64, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nominee_id) DO UPDATE SET category_id = excluded.category_id, mime_type = excluded.mime_type, data_base64 = excluded.data_base64, updated_at = excluded.updated_at').bind(nomineeId, categoryId, match[1], encoded, updatedAt),
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'setNomineePhoto', ?)").bind(crypto.randomUUID(), updatedAt, JSON.stringify({ categoryId, nomineeId })),
+  ]);
+  return reply({ ok: true, nomineeId, updatedAt, photoUrl: '/api/nominee-photo?id=' + encodeURIComponent(nomineeId) + '&v=' + encodeURIComponent(updatedAt) });
+}
 async function adminResults(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
-  const rows = await db.prepare("SELECT answers_json FROM ballots WHERE is_test = 0").all();
+  const settings = await getSettings(db);
+  const catalog = catalogFromSettings(settings);
+  const rows = await db.prepare('SELECT answers_json FROM ballots WHERE is_test = 0').all();
   const counts = new Map();
-  for (const category of ballot.categories) {
-    const categoryCounts = new Map(category.nominees.map((nominee) => [nominee.id, 0]));
-    counts.set(category.id, categoryCounts);
-  }
+  for (const category of catalog.categories) counts.set(category.id, new Map(category.nominees.map((nominee) => [nominee.id, 0])));
   for (const row of rows.results || []) {
     let selections;
     try { selections = JSON.parse(row.answers_json); } catch { continue; }
@@ -315,20 +375,13 @@ async function adminResults(db, env, input, request) {
     }
   }
   return reply({
-    ok: true,
-    totalBallots: (rows.results || []).length,
-    categories: ballot.categories.map((category) => ({
-      id: category.id,
-      title: category.title,
-      nominees: category.nominees.map((nominee) => ({
-        id: nominee.id,
-        name: nominee.name,
-        votes: counts.get(category.id).get(nominee.id) || 0,
-      })),
+    ok: true, totalBallots: (rows.results || []).length,
+    categories: catalog.categories.map((category) => ({
+      id: category.id, title: category.title,
+      nominees: category.nominees.map((nominee) => ({ id: nominee.id, name: nominee.name, votes: counts.get(category.id)?.get(nominee.id) || 0 })),
     })),
   });
 }
-
 async function claimInvite(db, input) {
   const token = String(input.token || "");
   if (!/^[a-f0-9]{64}$/i.test(token)) return fail(401, "Lien invalide ou expiré.");
@@ -363,27 +416,33 @@ async function claimInvite(db, input) {
 }
 
 async function getBallot(db, input) {
-  const sessionHash = await digest(String(input.session || ""));
+  const sessionHash = await digest(String(input.session || ''));
   const row = await db.prepare(`
     SELECT s.expires_at AS session_expires, s.used AS session_used,
-      l.expires_at AS link_expires, l.used AS link_used,
-      v.voted, v.active, v.is_test
-    FROM sessions s
-    JOIN invite_links l ON l.token_hash = s.link_hash
-    JOIN voters v ON v.id = s.voter_id
-    WHERE s.session_hash = ?
+      l.expires_at AS link_expires, l.used AS link_used, v.voted, v.active, v.is_test
+    FROM sessions s JOIN invite_links l ON l.token_hash = s.link_hash
+    JOIN voters v ON v.id = s.voter_id WHERE s.session_hash = ?
   `).bind(sessionHash).first();
   const settings = await getSettings(db);
   if (!row || row.active !== 1 || row.voted === 1 || row.link_used === 1 || row.session_used === 1
       || Date.parse(row.session_expires) <= Date.now() || Date.parse(row.link_expires) <= Date.now()) {
-    return fail(401, "La session de vote a expiré. Ouvre à nouveau ton lien personnel.");
+    return fail(401, 'La session de vote a expiré. Ouvre à nouveau ton lien personnel.');
   }
-  if (settings.test_mode !== String(row.is_test) || settings.is_open !== "1" || Date.parse(settings.closes_at || "") <= Date.now()) {
-    return fail(410, "La période du scrutin est terminée.");
+  if (settings.test_mode !== String(row.is_test) || settings.is_open !== '1' || Date.parse(settings.closes_at || '') <= Date.now()) {
+    return fail(410, 'La période du scrutin est terminée.');
   }
-  return reply({ ok: true, title: ballot.title, closesAt: settings.closes_at, categories: ballot.categories });
+  const catalog = catalogFromSettings(settings);
+  const photoRows = await db.prepare('SELECT nominee_id, updated_at FROM nominee_photos').all();
+  const photoVersions = new Map((photoRows.results || []).map((item) => [item.nominee_id, item.updated_at]));
+  const categories = catalog.categories.map((category) => ({
+    ...category,
+    nominees: category.nominees.map((nominee) => {
+      const version = photoVersions.get(nominee.id);
+      return { ...nominee, photoUrl: version ? '/api/nominee-photo?id=' + encodeURIComponent(nominee.id) + '&v=' + encodeURIComponent(version) : null };
+    }),
+  }));
+  return reply({ ok: true, title: settings.title || catalog.title || ballot.title, closesAt: settings.closes_at, categories });
 }
-
 async function submitBallot(db, input) {
   const sessionToken = String(input.session || "");
   if (!/^[a-f0-9]{64}$/i.test(sessionToken)) return fail(401, "La session de vote a expiré.");
@@ -400,11 +459,12 @@ async function submitBallot(db, input) {
   if (settings.test_mode !== String(isTest) || settings.is_open !== "1" || Date.parse(settings.closes_at || "") <= Date.now()) {
     return fail(410, "La période du scrutin est terminée.");
   }
-  const selectionError = validateSelections(input.selections, ballot.categories);
+  const catalog = catalogFromSettings(settings);
+  const selectionError = validateSelections(input.selections, catalog.categories);
   if (selectionError) return fail(400, selectionError);
   const ballotId = crypto.randomUUID();
   const createdAt = new Date().toISOString();
-  const catalogHash = await digest(JSON.stringify(ballot));
+  const catalogHash = await digest(JSON.stringify(catalog));
   const auditAction = isTest ? "submitTestBallot" : "submitOfficialBallot";
   const result = await db.batch([
     db.prepare(`
@@ -436,7 +496,7 @@ export async function onRequestPost({ request, env }) {
   let input;
   try {
     const body = await request.text();
-    if (body.length > 65536) return fail(413, "Requête trop volumineuse.");
+    if (body.length > 1400000) return fail(413, "Image trop volumineuse. Réduis sa taille puis réessaie.");
     input = JSON.parse(body || "{}");
   } catch {
     return fail(400, "Requête illisible.");
@@ -453,6 +513,8 @@ export async function onRequestPost({ request, env }) {
       case "adminCreateTestLink": return await createTestLink(env.DB, env, input, request);
       case "adminCreateOfficialLinks": return await createOfficialLinks(env.DB, env, input, request);
       case "adminDisableOfficialLink": return await disableOfficialLink(env.DB, env, input, request);
+      case "adminUpdateNomineeName": return await adminUpdateNomineeName(env.DB, env, input, request);
+      case "adminSetNomineePhoto": return await adminSetNomineePhoto(env.DB, env, input, request);
       case "adminResults": return await adminResults(env.DB, env, input, request);
       case "adminCloseVote": {
         const auth = await requireAdmin(request, env, input);
