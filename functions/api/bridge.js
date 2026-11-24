@@ -185,7 +185,6 @@ async function createTestLink(db, env, input, request) {
 async function createOfficialLinks(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
-  if (ballot.pending?.length) return fail(409, "Le catalogue officiel doit être validé avant la création des liens. Vérifie les catégories et les graphies affichées dans l’administration.");
   const closesAtMs = Date.parse(ballot.closesAt || "");
   if (!Number.isFinite(closesAtMs) || closesAtMs <= Date.now()) return fail(409, "La date de clôture du bulletin est passée ou invalide.");
   const alreadyVoted = await db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first();
