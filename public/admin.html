@@ -10,13 +10,13 @@
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./admin.js"></script>
   </head>
-  <body>
-    <header class="site-topbar"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">✦</span><span>MPL Ballin’<br>d’Or 2026</span></a><span class="topbar-label">Espace organisateur</span></header>
+  <body class="ballot-page admin-page">
+    <header class="site-topbar"><a class="club-wordmark" href="./"><span class="wordmark-name">Le CLUB MPL 11</span><span class="wordmark-edition">MPL BALLIN’ D’OR · 2026</span></a><span class="topbar-label">Espace organisateur</span></header>
     <main class="admin-main" id="admin-root">
       <section class="locked-admin">
         <p class="eyebrow">Accès privé</p>
-        <h1>Organiser le vote</h1>
-        <p>Entre la clé organisateur configurée dans les variables secrètes de Cloudflare Pages. Elle reste en mémoire le temps de cette page.</p>
+        <h1>Accéder à l’administration</h1>
+        <p>Saisis la clé secrète configurée dans Cloudflare. Elle reste uniquement en mémoire dans cette page.</p>
         <form id="login-form" class="admin-row">
           <label class="field">Clé organisateur<input id="admin-secret" type="password" autocomplete="current-password" required /></label>
           <button class="admin-button" type="submit">Ouvrir</button>
