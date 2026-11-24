@@ -114,12 +114,14 @@ async function ensureSchema(db) {
       data_base64 TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,
-    `CREATE TABLE IF NOT EXISTS photo_library (
+`CREATE TABLE IF NOT EXISTS photo_library (
       id TEXT PRIMARY KEY,
       source_key TEXT UNIQUE,
       display_name TEXT NOT NULL,
       mime_type TEXT NOT NULL,
       data_base64 TEXT NOT NULL,
+      original_mime_type TEXT,
+      original_data_base64 TEXT,
       assigned_alias TEXT,
       created_at TEXT NOT NULL
     )`,
@@ -138,6 +140,11 @@ async function ensureSchema(db) {
   const photoColumns = await db.prepare('PRAGMA table_info(nominee_photos)').all();
   const existingPhotoColumns = new Set((photoColumns.results || []).map((column) => column.name));
   if (!existingPhotoColumns.has('library_photo_id')) await db.prepare('ALTER TABLE nominee_photos ADD COLUMN library_photo_id TEXT').run();
+
+  const libraryColumns = await db.prepare('PRAGMA table_info(photo_library)').all();
+  const existingLibraryColumns = new Set((libraryColumns.results || []).map((column) => column.name));
+  if (!existingLibraryColumns.has('original_mime_type')) await db.prepare('ALTER TABLE photo_library ADD COLUMN original_mime_type TEXT').run();
+  if (!existingLibraryColumns.has('original_data_base64')) await db.prepare('ALTER TABLE photo_library ADD COLUMN original_data_base64 TEXT').run();
 
   const linkColumns = await db.prepare('PRAGMA table_info(invite_links)').all();
   const existingColumns = new Set((linkColumns.results || []).map((column) => column.name));
@@ -201,7 +208,7 @@ async function adminState(db, env, input, request) {
     db.prepare('SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0').first(),
     db.prepare('SELECT v.id AS id, v.name AS name, v.active AS active, v.voted AS voted, l.used AS used, l.expires_at AS expires_at, l.created_at AS created_at, l.token_ciphertext AS token_ciphertext, l.token_iv AS token_iv FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 ORDER BY l.created_at DESC').all(),
     db.prepare('SELECT nominee_id, updated_at, mime_type, data_base64 FROM nominee_photos').all(),
-    db.prepare('SELECT id, source_key, display_name, mime_type, data_base64, assigned_alias, created_at FROM photo_library ORDER BY created_at DESC').all(),
+    db.prepare('SELECT id, source_key, display_name, mime_type, data_base64, original_mime_type, original_data_base64, assigned_alias, created_at FROM photo_library ORDER BY created_at DESC').all(),
   ]);
   const now = Date.now();
   const origin = new URL(request.url).origin;
@@ -246,11 +253,12 @@ async function adminState(db, env, input, request) {
   }
   if (migratedOriginals.length) await db.batch(migratedOriginals);
   const refreshedLibrary = migratedOriginals.length
-    ? await db.prepare('SELECT id, source_key, display_name, mime_type, data_base64, assigned_alias, created_at FROM photo_library ORDER BY created_at DESC').all()
+    ? await db.prepare('SELECT id, source_key, display_name, mime_type, data_base64, original_mime_type, original_data_base64, assigned_alias, created_at FROM photo_library ORDER BY created_at DESC').all()
     : { results: libraryRows.results || [] };
   const photoLibrary = (refreshedLibrary.results || []).map((row) => ({
     id: row.id, sourceKey: row.source_key, name: row.display_name, assignedAlias: row.assigned_alias,
     createdAt: row.created_at, photoData: 'data:' + row.mime_type + ';base64,' + row.data_base64,
+    originalData: 'data:' + (row.original_mime_type || row.mime_type) + ';base64,' + (row.original_data_base64 || row.data_base64),
   }));
   const assignedParticipants = participants.filter((person) => person.photoUrl).length;
   const officialLinkItems = await Promise.all((linkRows.results || []).map(async (row) => {
@@ -400,14 +408,30 @@ async function adminAddPhoto(db, env, input, request) {
   if (auth.error) return auth.error;
   const dataUrl = String(input.photoData || '');
   const match = dataUrl.match(/^data:(image\/(?:webp|jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/);
-  if (!match || match[2].length > 1300000) return fail(400, 'Image invalide ou trop volumineuse.');
+  const originalUrl = String(input.originalData || dataUrl);
+  const originalMatch = originalUrl.match(/^data:(image\/(?:webp|jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match || !originalMatch || match[2].length > 900000 || originalMatch[2].length > 900000) return fail(400, 'Image invalide ou trop volumineuse.');
   const id = String(input.photoId || crypto.randomUUID()).slice(0, 80);
   const sourceKey = input.sourceKey ? String(input.sourceKey).slice(0, 120) : null;
   const displayName = String(input.name || 'Portrait ajouté').slice(0, 120);
   const createdAt = new Date().toISOString();
-  await db.prepare('INSERT OR IGNORE INTO photo_library (id, source_key, display_name, mime_type, data_base64, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, sourceKey, displayName, match[1], match[2], createdAt).run();
+  await db.prepare('INSERT OR IGNORE INTO photo_library (id, source_key, display_name, mime_type, data_base64, original_mime_type, original_data_base64, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, sourceKey, displayName, match[1], match[2], originalMatch[1], originalMatch[2], createdAt).run();
   return reply({ ok: true, id, sourceKey });
+}
+
+async function adminDeletePhoto(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const photoId = String(input.photoId || '');
+  const photo = await db.prepare('SELECT id, assigned_alias FROM photo_library WHERE id = ?').bind(photoId).first();
+  if (!photo) return fail(404, 'Cette photo n’est plus dans la galerie.');
+  if (photo.assigned_alias) return fail(409, 'Cette photo est déjà associée à un alias. Supprime uniquement les photos non attribuées depuis cette galerie.');
+  await db.batch([
+    db.prepare('DELETE FROM photo_library WHERE id = ? AND assigned_alias IS NULL').bind(photoId),
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'deleteUnassignedPhoto', ?)").bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ photoId })),
+  ]);
+  return reply({ ok: true, photoId });
 }
 
 async function adminRenameAlias(db, env, input, request) {
@@ -648,6 +672,7 @@ export async function onRequestPost({ request, env }) {
       case "adminUpdateNomineeName": return await adminUpdateNomineeName(env.DB, env, input, request);
       case "adminSetNomineePhoto": return await adminSetNomineePhoto(env.DB, env, input, request);
       case "adminAddPhoto": return await adminAddPhoto(env.DB, env, input, request);
+      case "adminDeletePhoto": return await adminDeletePhoto(env.DB, env, input, request);
       case "adminRenameAlias": return await adminRenameAlias(env.DB, env, input, request);
       case "adminAssignPhotoToAlias": return await adminAssignPhotoToAlias(env.DB, env, input, request);
       case "adminResults": return await adminResults(env.DB, env, input, request);
