@@ -1207,3 +1207,10 @@ body.ballot-page {
 .photo-preview-pair { grid-template-columns:minmax(0,1fr); }
 .photo-preview-pair figure { max-width:720px; margin:0 auto; width:100%; }
 .photo-preview-pair img { image-rendering:pixelated; }
+
+.photo-library-actions { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; }
+.photo-library-actions .delete-all-photos { white-space:nowrap; }
+.photo-library-actions .delete-all-photos:disabled { opacity:.45; cursor:not-allowed; }
+.library-photo-delete { opacity:0; }
+.library-photo-card:hover .library-photo-delete,.library-photo-card:focus-within .library-photo-delete { opacity:1; }
+@media(max-width:600px) { .photo-library-actions { width:100%; } .photo-library-actions > * { flex:1 1 auto; text-align:center; } .library-photo-delete { opacity:1; } }
