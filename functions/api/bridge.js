@@ -200,7 +200,7 @@ async function adminState(db, env, input, request) {
     db.prepare("SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ? AND (SELECT value FROM settings WHERE key = 'is_open') = '1'").bind(new Date().toISOString()).first(),
     db.prepare('SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0').first(),
     db.prepare('SELECT v.id AS id, v.name AS name, v.active AS active, v.voted AS voted, l.used AS used, l.expires_at AS expires_at, l.created_at AS created_at, l.token_ciphertext AS token_ciphertext, l.token_iv AS token_iv FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 ORDER BY l.created_at DESC').all(),
-    db.prepare('SELECT nominee_id, updated_at FROM nominee_photos').all(),
+    db.prepare('SELECT nominee_id, updated_at, mime_type, data_base64 FROM nominee_photos').all(),
     db.prepare('SELECT id, source_key, display_name, mime_type, data_base64, assigned_alias, created_at FROM photo_library ORDER BY created_at DESC').all(),
   ]);
   const now = Date.now();
@@ -223,7 +223,32 @@ async function adminState(db, env, input, request) {
     aliasesMap.set(key, record);
   }
   const participants = [...aliasesMap.values()].map((item) => ({ ...item, categoryIds: [...new Set(item.categoryIds)] }));
-  const photoLibrary = (libraryRows.results || []).map((row) => ({
+  const originalPhotos = photoRows.results || [];
+  const originalById = new Map(originalPhotos.map((row) => [row.nominee_id, row]));
+  const aliasNames = new Map();
+  for (const category of catalog.categories) for (const nominee of category.nominees) {
+    const key = String(nominee.name || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+    if (!aliasNames.has(key)) aliasNames.set(key, nominee.name);
+  }
+  const libraryAliasKeys = new Set((libraryRows.results || []).map((row) =>
+    String(row.assigned_alias || '').trim().normalize('NFC').toLocaleLowerCase('fr')));
+  const migratedOriginals = [];
+  const migratedKeys = new Set(libraryAliasKeys);
+  for (const category of catalog.categories) for (const nominee of category.nominees) {
+    const key = String(nominee.name || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+    const original = originalById.get(nominee.id);
+    if (!original || migratedKeys.has(key)) continue;
+    const id = 'original-' + nominee.id;
+    migratedOriginals.push(db.prepare(
+      'INSERT OR IGNORE INTO photo_library (id, source_key, display_name, mime_type, data_base64, assigned_alias, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(id, 'existing-' + nominee.id, 'Photo originale ' + nominee.name, original.mime_type, original.data_base64, nominee.name, original.updated_at));
+    migratedKeys.add(key);
+  }
+  if (migratedOriginals.length) await db.batch(migratedOriginals);
+  const refreshedLibrary = migratedOriginals.length
+    ? await db.prepare('SELECT id, source_key, display_name, mime_type, data_base64, assigned_alias, created_at FROM photo_library ORDER BY created_at DESC').all()
+    : { results: libraryRows.results || [] };
+  const photoLibrary = (refreshedLibrary.results || []).map((row) => ({
     id: row.id, sourceKey: row.source_key, name: row.display_name, assignedAlias: row.assigned_alias,
     createdAt: row.created_at, photoData: 'data:' + row.mime_type + ';base64,' + row.data_base64,
   }));
@@ -427,6 +452,11 @@ async function adminAssignPhotoToAlias(db, env, input, request) {
   const writes = [];
   if (photo.assigned_alias && normalize(photo.assigned_alias) !== normalize(nominees[0].name)) {
     writes.push(db.prepare('DELETE FROM nominee_photos WHERE library_photo_id = ?').bind(photoId));
+    for (const category of catalog.categories) for (const oldNominee of category.nominees) {
+      if (normalize(oldNominee.name) === normalize(photo.assigned_alias)) {
+        writes.push(db.prepare('DELETE FROM nominee_photos WHERE nominee_id = ?').bind(oldNominee.id));
+      }
+    }
   }
   writes.push(db.prepare('UPDATE photo_library SET assigned_alias = NULL WHERE assigned_alias = ?').bind(nominees[0].name));
   if (photo.assigned_alias && normalize(photo.assigned_alias) !== normalize(nominees[0].name)) {
