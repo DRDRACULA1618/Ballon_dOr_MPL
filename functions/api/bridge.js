@@ -169,7 +169,7 @@ async function adminState(db, env, input, request) {
   const [testStats, liveStats, linkStats, latestLive, linkRows] = await Promise.all([
     db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 1').first(),
     db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0').first(),
-    db.prepare('SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ?').bind(new Date().toISOString()).first(),
+    db.prepare("SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ? AND (SELECT value FROM settings WHERE key = 'is_open') = '1'").bind(new Date().toISOString()).first(),
     db.prepare('SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0').first(),
     db.prepare('SELECT v.id AS id, v.name AS name, v.active AS active, v.voted AS voted, l.used AS used, l.expires_at AS expires_at, l.created_at AS created_at, l.token_ciphertext AS token_ciphertext, l.token_iv AS token_iv FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 ORDER BY l.created_at DESC').all(),
   ]);
@@ -177,8 +177,9 @@ async function adminState(db, env, input, request) {
   const origin = new URL(request.url).origin;
   const officialLinkItems = await Promise.all((linkRows.results || []).map(async (row) => {
     let status = 'available';
-    if (Number(row.used) === 1 || Number(row.voted) === 1) status = 'used';
+    if (Number(row.voted) === 1) status = 'used';
     else if (Number(row.active) !== 1) status = 'disabled';
+    else if (Number(row.used) === 1) status = 'used';
     else if (Date.parse(row.expires_at) <= now) status = 'expired';
     else if (settings.is_open !== '1') status = 'closed';
     let url = null;
