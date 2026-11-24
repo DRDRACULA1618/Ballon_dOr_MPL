@@ -107,63 +107,25 @@ function formatDeadline(value) {
 }
 
 function renderVerification() {
-  app.innerHTML = `${topbar("Accès électeur")}<main class="state-view auth-view"><div class="state-icon" aria-hidden="true">✉</div><h1>Vérifie ton adresse e-mail</h1><p>Un code temporaire sera envoyé à l’adresse enregistrée par l’organisateur. Tu en auras besoin pour ouvrir le bulletin.</p><button class="primary-button" id="request-code" type="button">Envoyer le code <span class="button-arrow" aria-hidden="true">→</span></button><form id="verify-form" class="otp-form" hidden><label class="field">Code à 6 chiffres<input id="otp-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required /></label><button class="primary-button" type="submit">Vérifier le code</button></form><p class="form-message" id="auth-message" role="status"></p><p class="auth-note">Le code expire après 10 minutes. Garde ton lien personnel privé.</p></main><footer class="site-footer"><span>Un seul bulletin par lien personnel.</span><a href="./admin.html">Espace organisateur</a></footer>`;
+  app.innerHTML = `${topbar("Accès électeur")}<main class="state-view auth-view"><div class="state-icon" aria-hidden="true">✉</div><h1>Ouvre ton bulletin</h1><p>Ce lien personnel permet un seul vote. Il expirera après la soumission ou à la fin de la période du test.</p><button class="primary-button" id="open-ballot" type="button">Ouvrir mon bulletin <span class="button-arrow" aria-hidden="true">→</span></button><p class="form-message" id="auth-message" role="status"></p><p class="auth-note">Garde ce lien privé. Une fois le bulletin soumis, il ne pourra plus servir.</p></main><footer class="site-footer"><span>Un seul bulletin par lien personnel.</span></footer>`;
 
-  const requestButton = document.querySelector("#request-code");
-  const form = document.querySelector("#verify-form");
+  const openButton = document.querySelector("#open-ballot");
   const message = document.querySelector("#auth-message");
-  let retryTimer = null;
-
-  requestButton.addEventListener("click", async () => {
-    requestButton.disabled = true;
-    requestButton.textContent = "Envoi en cours…";
+  openButton.addEventListener("click", async () => {
+    openButton.disabled = true;
+    openButton.textContent = "Ouverture du bulletin…";
     message.classList.remove("visible", "error");
     try {
-      const result = await api("requestOtp", { token: inviteToken });
-      message.textContent = result.message;
-      message.classList.add("visible");
-      form.hidden = false;
-      document.querySelector("#otp-code").focus();
-      let remaining = 60;
-      requestButton.textContent = `Renvoyer le code dans ${remaining}s`;
-      retryTimer = window.setInterval(() => {
-        remaining -= 1;
-        if (remaining <= 0) {
-          window.clearInterval(retryTimer);
-          requestButton.disabled = false;
-          requestButton.textContent = "Renvoyer le code";
-        } else {
-          requestButton.textContent = `Renvoyer le code dans ${remaining}s`;
-        }
-      }, 1000);
-    } catch (error) {
-      message.textContent = error.message;
-      message.classList.add("visible", "error");
-      requestButton.disabled = false;
-      requestButton.textContent = "Réessayer l’envoi";
-    }
-  });
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const code = document.querySelector("#otp-code").value.trim();
-    const submit = form.querySelector("button");
-    submit.disabled = true;
-    submit.textContent = "Vérification…";
-    message.classList.remove("visible", "error");
-    try {
-      const result = await api("verifyOtp", { token: inviteToken, code });
+      const result = await api("claimInvite", { token: inviteToken });
       sessionToken = result.session;
       sessionStorage.setItem(sessionKey, sessionToken);
       inviteToken = "";
-      if (retryTimer) window.clearInterval(retryTimer);
       await loadBallot();
     } catch (error) {
       message.textContent = error.message;
       message.classList.add("visible", "error");
-      submit.disabled = false;
-      submit.textContent = "Vérifier le code";
-      document.querySelector("#otp-code").select();
+      openButton.disabled = false;
+      openButton.innerHTML = 'Réessayer <span class="button-arrow" aria-hidden="true">→</span>';
     }
   });
 }
