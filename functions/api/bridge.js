@@ -135,6 +135,10 @@ async function ensureSchema(db) {
   ];
   await db.batch(statements.map((sql) => db.prepare(sql)));
 
+  const photoColumns = await db.prepare('PRAGMA table_info(nominee_photos)').all();
+  const existingPhotoColumns = new Set((photoColumns.results || []).map((column) => column.name));
+  if (!existingPhotoColumns.has('library_photo_id')) await db.prepare('ALTER TABLE nominee_photos ADD COLUMN library_photo_id TEXT').run();
+
   const linkColumns = await db.prepare('PRAGMA table_info(invite_links)').all();
   const existingColumns = new Set((linkColumns.results || []).map((column) => column.name));
   if (!existingColumns.has('token_ciphertext')) await db.prepare('ALTER TABLE invite_links ADD COLUMN token_ciphertext TEXT').run();
@@ -420,9 +424,16 @@ async function adminAssignPhotoToAlias(db, env, input, request) {
     .map((nominee) => ({ ...nominee, categoryId: category.id })));
   if (!nominees.length) return fail(404, 'Cet alias n’existe plus dans le catalogue.');
   const updatedAt = new Date().toISOString();
-  const writes = nominees.map((nominee) => db.prepare(
-    'INSERT INTO nominee_photos (nominee_id, category_id, mime_type, data_base64, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nominee_id) DO UPDATE SET category_id = excluded.category_id, mime_type = excluded.mime_type, data_base64 = excluded.data_base64, updated_at = excluded.updated_at'
-  ).bind(nominee.id, nominee.categoryId, photo.mime_type, photo.data_base64, updatedAt));
+  const writes = [];
+  if (photo.assigned_alias && normalize(photo.assigned_alias) !== normalize(nominees[0].name)) {
+    writes.push(db.prepare('DELETE FROM nominee_photos WHERE library_photo_id = ?').bind(photoId));
+  }
+  writes.push(db.prepare('UPDATE photo_library SET assigned_alias = NULL WHERE assigned_alias = ?').bind(nominees[0].name));
+  if (photo.assigned_alias && normalize(photo.assigned_alias) !== normalize(nominees[0].name)) {
+    writes.push(db.prepare('UPDATE photo_library SET assigned_alias = NULL WHERE assigned_alias = ?').bind(photo.assigned_alias));
+  }
+  const upsertSql = 'INSERT INTO nominee_photos (nominee_id, category_id, mime_type, data_base64, updated_at, library_photo_id) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(nominee_id) DO UPDATE SET category_id = excluded.category_id, mime_type = excluded.mime_type, data_base64 = excluded.data_base64, updated_at = excluded.updated_at, library_photo_id = excluded.library_photo_id';
+  writes.push(...nominees.map((nominee) => db.prepare(upsertSql).bind(nominee.id, nominee.categoryId, photo.mime_type, photo.data_base64, updatedAt, photoId)));
   writes.push(db.prepare('UPDATE photo_library SET assigned_alias = ? WHERE id = ?').bind(nominees[0].name, photoId));
   writes.push(db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'assignPhotoToAlias', ?)").bind(crypto.randomUUID(), updatedAt, JSON.stringify({ photoId, aliasName: nominees[0].name, nominations: nominees.length })));
   await db.batch(writes);
