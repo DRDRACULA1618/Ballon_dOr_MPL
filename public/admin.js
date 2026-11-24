@@ -74,11 +74,13 @@ function renderDashboard(nextState, links = null) {
     <div class="demo-ribbon">MODE RÉEL — les votes officiels sont enregistrés dans Cloudflare D1 et comptés séparément des anciens bulletins de test.</div>
     ${warning}
     <section class="admin-panel"><h2>État du scrutin</h2><div class="live-stats"><p><strong>${state.officialBallots}</strong><span>votes officiels</span></p><p><strong>${state.officialLinks}</strong><span>liens non utilisés</span></p><p><strong>${state.testBallots}</strong><span>anciens tests isolés</span></p></div><p class="field-note">Clôture configurée : ${escapeHtml(closeDate)} · fuseau Abidjan.</p><button class="admin-button secondary" id="refresh-state" type="button">Actualiser l’état</button></section>
+    <section class="admin-panel"><h2>Gérer les noms et les photos</h2><p>Corrige les noms par catégorie, puis dépose chaque portrait sur la ligne du nominé correspondant. Les changements apparaissent sur le bulletin public.</p><div id="nominee-manager" class="nominee-manager"></div></section>
     <section class="admin-panel"><h2>Liens personnels de vote</h2><p>Les liens générés restent disponibles dans cet espace après reconnexion. Tu peux désactiver chaque lien séparément ou en ajouter de nouveaux sans invalider les liens existants. Choisis entre 1 et 1 000 liens par création ; le nombre total n’est pas plafonné.</p><div class="admin-row link-create-row"><label class="field quantity-field" for="link-count">Nombre de liens à ajouter<input id="link-count" type="number" min="1" max="1000" step="1" value="7" /></label><button class="admin-button" id="create-official-links" type="button">Créer les liens</button><span class="admin-message" id="links-message" role="status"></span></div><div id="generated-links" class="generated-links" hidden></div></section>
     <section class="admin-panel"><h2>Résultats officiels</h2><p>Les résultats sont agrégés par catégorie. Les choix individuels ne sont pas dévoilés.</p><div class="admin-row"><button class="admin-button secondary" id="load-results" type="button">Charger les résultats</button><button class="admin-button secondary" id="export-results" type="button" hidden>Exporter en CSV</button></div><div id="results-content" class="admin-results"></div></section>
     <section class="admin-panel"><h2>Clôture</h2><p>La clôture désactive immédiatement les liens encore ouverts.</p><button class="admin-button danger" id="close-vote" type="button" ${state.isOpen ? "" : "disabled"}>Clôturer le scrutin</button><span class="admin-message" id="close-message" role="status"></span></section>
     <p><a href="./">← Retour à la page publique</a></p>`;
   renderLinks(state.links || [], state.closesAt);
+  renderNomineeManager(state.categories || []);
   if (resultData) renderResults(resultData);
   document.querySelector("#refresh-state").addEventListener("click", refreshState);
   document.querySelector("#create-official-links").addEventListener("click", createOfficialLinks);
@@ -154,3 +156,84 @@ document.querySelector("#login-form").addEventListener("submit", async (event) =
   try { renderDashboard(await api("adminState")); }
   catch (error) { adminSecret = ""; showMessage("login-message", error.message, true); }
 });
+
+
+function renderNomineeManager(categories) {
+  const target = document.querySelector("#nominee-manager");
+  if (!target) return;
+  target.innerHTML = categories.map((category) => `
+    <details class="nominee-admin-category" open>
+      <summary><span>${escapeHtml(category.title)}</span><small>${category.nominees.length} nominés</small></summary>
+      <div class="nominee-admin-list">${category.nominees.map((nominee) => `
+        <article class="nominee-admin-row" data-category-id="${escapeHtml(category.id)}" data-nominee-id="${escapeHtml(nominee.id)}">
+          <div class="nominee-admin-photo">${nominee.photoUrl ? `<img src="${escapeHtml(nominee.photoUrl)}" alt="Photo de ${escapeHtml(nominee.name)}">` : `<span aria-hidden="true">${escapeHtml(nominee.name.trim().slice(0,1).toUpperCase() || "?")}</span>`}</div>
+          <div class="nominee-admin-fields"><label>Nom du nominé<input class="nominee-name-input" type="text" maxlength="80" value="${escapeHtml(nominee.name)}"></label><span class="nominee-photo-hint">Photo individuelle · carré conseillé</span></div>
+          <div class="nominee-admin-actions"><button class="admin-button secondary save-nominee-name" type="button">Enregistrer le nom</button><label class="admin-button secondary nominee-photo-pick">Choisir une photo<input class="nominee-photo-input" type="file" accept="image/*"></label></div>
+          <div class="nominee-dropzone" tabindex="0" role="button" aria-label="Déposer une photo pour ${escapeHtml(nominee.name)}">Déposer la photo ici</div>
+          <span class="nominee-admin-message" role="status"></span>
+        </article>`).join("")}</div>
+    </details>`).join("");
+
+  target.querySelectorAll(".nominee-admin-row").forEach((row) => {
+    const input = row.querySelector(".nominee-photo-input");
+    const drop = row.querySelector(".nominee-dropzone");
+    row.querySelector(".save-nominee-name").addEventListener("click", () => saveNomineeName(row));
+    input.addEventListener("change", () => { if (input.files?.[0]) uploadNomineePhoto(row, input.files[0]); });
+    drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("is-dragging"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("is-dragging"));
+    drop.addEventListener("drop", (event) => {
+      event.preventDefault(); drop.classList.remove("is-dragging");
+      const file = event.dataTransfer?.files?.[0];
+      if (file) uploadNomineePhoto(row, file);
+    });
+    drop.addEventListener("click", () => input.click());
+    drop.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); input.click(); } });
+  });
+}
+
+function nomineeMessage(row, message, error = false) {
+  const node = row.querySelector(".nominee-admin-message");
+  node.textContent = message;
+  node.classList.toggle("error", error);
+}
+
+async function saveNomineeName(row) {
+  const name = row.querySelector(".nominee-name-input").value.trim();
+  if (!name) return nomineeMessage(row, "Le nom ne peut pas être vide.", true);
+  const button = row.querySelector(".save-nominee-name");
+  button.disabled = true;
+  nomineeMessage(row, "Enregistrement…");
+  try {
+    await api("adminUpdateNomineeName", { categoryId: row.dataset.categoryId, nomineeId: row.dataset.nomineeId, name });
+    resultData = null;
+    renderDashboard(await api("adminState"));
+    showMessage("login-message", "Nom mis à jour.");
+  } catch (error) { nomineeMessage(row, error.message, true); button.disabled = false; }
+}
+
+async function imageDataUrl(file) {
+  if (!file.type.startsWith("image/")) throw new Error("Choisis un fichier image.");
+  const source = await createImageBitmap(file);
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size; canvas.height = size;
+  const context = canvas.getContext("2d");
+  const scale = Math.max(size / source.width, size / source.height);
+  const width = source.width * scale, height = source.height * scale;
+  context.drawImage(source, (size - width) / 2, (size - height) / 2, width, height);
+  source.close?.();
+  return canvas.toDataURL("image/webp", 0.82);
+}
+
+async function uploadNomineePhoto(row, file) {
+  const drop = row.querySelector(".nominee-dropzone");
+  drop.classList.add("is-uploading");
+  nomineeMessage(row, "Préparation et envoi de la photo…");
+  try {
+    const photoData = await imageDataUrl(file);
+    await api("adminSetNomineePhoto", { categoryId: row.dataset.categoryId, nomineeId: row.dataset.nomineeId, photoData });
+    resultData = null;
+    renderDashboard(await api("adminState"));
+    showMessage("login-message", "Photo attribuée au nominé.");
+  } catch (error) { nomineeMessage(row, error.message, true); drop.classList.remove("is-uploading"); }
+}
