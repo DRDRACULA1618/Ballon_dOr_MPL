@@ -156,8 +156,8 @@ async function adminState(db, env, input, request) {
 async function createTestLink(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
-  const liveBallots = await db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first();
-  if (Number(liveBallots?.total || 0) > 0) return fail(409, "Le scrutin officiel a déjà reçu des bulletins; le mode test est désactivé.");
+  const liveActivity = await db.prepare("SELECT (SELECT COUNT(*) FROM ballots WHERE is_test = 0) + (SELECT COUNT(*) FROM voters WHERE is_test = 0 AND active = 1) AS total").first();
+  if (Number(liveActivity?.total || 0) > 0) return fail(409, "Des liens officiels existent déjà; le mode test est désactivé.");
   const token = randomToken();
   const tokenHash = await digest(token);
   const voterId = crypto.randomUUID();
@@ -185,6 +185,7 @@ async function createTestLink(db, env, input, request) {
 async function createOfficialLinks(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
+  if (ballot.pending?.length) return fail(409, "Le catalogue officiel doit être validé avant la création des liens. Vérifie les catégories et les graphies affichées dans l’administration.");
   const closesAtMs = Date.parse(ballot.closesAt || "");
   if (!Number.isFinite(closesAtMs) || closesAtMs <= Date.now()) return fail(409, "La date de clôture du bulletin est passée ou invalide.");
   const alreadyVoted = await db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first();
