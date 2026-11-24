@@ -114,6 +114,15 @@ async function ensureSchema(db) {
       data_base64 TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS photo_library (
+      id TEXT PRIMARY KEY,
+      source_key TEXT UNIQUE,
+      display_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      data_base64 TEXT NOT NULL,
+      assigned_alias TEXT,
+      created_at TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS audit (
       event_id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,
@@ -181,13 +190,14 @@ async function adminState(db, env, input, request) {
   if (auth.error) return auth.error;
   const settings = await getSettings(db);
   const catalog = catalogFromSettings(settings);
-  const [testStats, liveStats, linkStats, latestLive, linkRows, photoRows] = await Promise.all([
+  const [testStats, liveStats, linkStats, latestLive, linkRows, photoRows, libraryRows] = await Promise.all([
     db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 1').first(),
     db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0').first(),
     db.prepare("SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ? AND (SELECT value FROM settings WHERE key = 'is_open') = '1'").bind(new Date().toISOString()).first(),
     db.prepare('SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0').first(),
     db.prepare('SELECT v.id AS id, v.name AS name, v.active AS active, v.voted AS voted, l.used AS used, l.expires_at AS expires_at, l.created_at AS created_at, l.token_ciphertext AS token_ciphertext, l.token_iv AS token_iv FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 ORDER BY l.created_at DESC').all(),
     db.prepare('SELECT nominee_id, updated_at FROM nominee_photos').all(),
+    db.prepare('SELECT id, source_key, display_name, mime_type, data_base64, assigned_alias, created_at FROM photo_library ORDER BY created_at DESC').all(),
   ]);
   const now = Date.now();
   const origin = new URL(request.url).origin;
@@ -199,6 +209,21 @@ async function adminState(db, env, input, request) {
       return { ...nominee, photoUrl: version ? '/api/nominee-photo?id=' + encodeURIComponent(nominee.id) + '&v=' + encodeURIComponent(version) : null };
     }),
   }));
+  const aliasesMap = new Map();
+  for (const category of categories) for (const nominee of category.nominees) {
+    const key = String(nominee.name || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+    const record = aliasesMap.get(key) || { key, name: nominee.name, nomineeIds: [], categoryIds: [], photoUrl: null };
+    record.nomineeIds.push(nominee.id);
+    record.categoryIds.push(category.id);
+    if (!record.photoUrl && nominee.photoUrl) record.photoUrl = nominee.photoUrl;
+    aliasesMap.set(key, record);
+  }
+  const participants = [...aliasesMap.values()].map((item) => ({ ...item, categoryIds: [...new Set(item.categoryIds)] }));
+  const photoLibrary = (libraryRows.results || []).map((row) => ({
+    id: row.id, sourceKey: row.source_key, name: row.display_name, assignedAlias: row.assigned_alias,
+    createdAt: row.created_at, photoData: 'data:' + row.mime_type + ';base64,' + row.data_base64,
+  }));
+  const assignedParticipants = participants.filter((person) => person.photoUrl).length;
   const officialLinkItems = await Promise.all((linkRows.results || []).map(async (row) => {
     let status = 'available';
     if (Number(row.voted) === 1) status = 'used';
@@ -220,7 +245,9 @@ async function adminState(db, env, input, request) {
     ok: true, title: settings.title || catalog.title || ballot.title,
     isOpen: settings.is_open === '1' && Date.parse(settings.closes_at || '') > Date.now(),
     testMode: settings.test_mode === '1', closesAt: settings.closes_at || ballot.closesAt,
-    categoryCount: categories.length, nominationCount, categories, pending: catalog.pending || [],
+    categoryCount: categories.length, nominationCount, categories, participants, photoLibrary,
+    participantCount: participants.length, assignedParticipantCount: assignedParticipants,
+    remainingPhotoCount: Math.max(0, participants.length - assignedParticipants), pending: catalog.pending || [],
     testBallots: Number(testStats?.total || 0), officialBallots: Number(liveStats?.total || 0),
     officialLinks: Number(linkStats?.total || 0), links: officialLinkItems, lastOfficialBallotAt: latestLive?.created_at || null,
   });
@@ -336,6 +363,70 @@ async function adminUpdateNomineeName(db, env, input, request) {
     db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'renameNominee', ?)").bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ categoryId, nomineeId, name })),
   ]);
   return reply({ ok: true, nomineeId, name });
+}
+
+
+async function adminAddPhoto(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const dataUrl = String(input.photoData || '');
+  const match = dataUrl.match(/^data:(image\/(?:webp|jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match || match[2].length > 1300000) return fail(400, 'Image invalide ou trop volumineuse.');
+  const id = String(input.photoId || crypto.randomUUID()).slice(0, 80);
+  const sourceKey = input.sourceKey ? String(input.sourceKey).slice(0, 120) : null;
+  const displayName = String(input.name || 'Portrait ajouté').slice(0, 120);
+  const createdAt = new Date().toISOString();
+  await db.prepare('INSERT OR IGNORE INTO photo_library (id, source_key, display_name, mime_type, data_base64, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(id, sourceKey, displayName, match[1], match[2], createdAt).run();
+  return reply({ ok: true, id, sourceKey });
+}
+
+async function adminRenameAlias(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const oldAlias = String(input.oldAlias || '').trim();
+  const name = String(input.name || '').trim().replace(/\s+/g, ' ');
+  if (!oldAlias || !name || name.length > 80) return fail(400, 'Saisis un alias valide (1 à 80 caractères).');
+  const settings = await getSettings(db);
+  const catalog = catalogFromSettings(settings);
+  const normalize = (value) => String(value || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+  let changed = 0;
+  for (const category of catalog.categories) for (const nominee of category.nominees) {
+    if (normalize(nominee.name) === normalize(oldAlias)) { nominee.name = name; changed++; }
+  }
+  if (!changed) return fail(404, 'Cet alias n’existe plus dans le catalogue.');
+  const catalogJson = JSON.stringify(catalog);
+  const catalogHash = await digest(catalogJson);
+  await db.batch([
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'catalog_json'").bind(catalogJson),
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'catalog_hash'").bind(catalogHash),
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'renameAlias', ?)").bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ oldAlias, name, changed })),
+  ]);
+  return reply({ ok: true, name, changed });
+}
+
+async function adminAssignPhotoToAlias(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const photoId = String(input.photoId || '');
+  const aliasName = String(input.aliasName || '').trim();
+  const photo = await db.prepare('SELECT id, mime_type, data_base64, assigned_alias FROM photo_library WHERE id = ?').bind(photoId).first();
+  if (!photo) return fail(404, 'La photo sélectionnée n’est plus disponible.');
+  const settings = await getSettings(db);
+  const catalog = catalogFromSettings(settings);
+  const normalize = (value) => String(value || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+  const nominees = catalog.categories.flatMap((category) => category.nominees
+    .filter((nominee) => normalize(nominee.name) === normalize(aliasName))
+    .map((nominee) => ({ ...nominee, categoryId: category.id })));
+  if (!nominees.length) return fail(404, 'Cet alias n’existe plus dans le catalogue.');
+  const updatedAt = new Date().toISOString();
+  const writes = nominees.map((nominee) => db.prepare(
+    'INSERT INTO nominee_photos (nominee_id, category_id, mime_type, data_base64, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(nominee_id) DO UPDATE SET category_id = excluded.category_id, mime_type = excluded.mime_type, data_base64 = excluded.data_base64, updated_at = excluded.updated_at'
+  ).bind(nominee.id, nominee.categoryId, photo.mime_type, photo.data_base64, updatedAt));
+  writes.push(db.prepare('UPDATE photo_library SET assigned_alias = ? WHERE id = ?').bind(nominees[0].name, photoId));
+  writes.push(db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'assignPhotoToAlias', ?)").bind(crypto.randomUUID(), updatedAt, JSON.stringify({ photoId, aliasName: nominees[0].name, nominations: nominees.length })));
+  await db.batch(writes);
+  return reply({ ok: true, aliasName: nominees[0].name, nominations: nominees.length });
 }
 
 async function adminSetNomineePhoto(db, env, input, request) {
@@ -515,6 +606,9 @@ export async function onRequestPost({ request, env }) {
       case "adminDisableOfficialLink": return await disableOfficialLink(env.DB, env, input, request);
       case "adminUpdateNomineeName": return await adminUpdateNomineeName(env.DB, env, input, request);
       case "adminSetNomineePhoto": return await adminSetNomineePhoto(env.DB, env, input, request);
+      case "adminAddPhoto": return await adminAddPhoto(env.DB, env, input, request);
+      case "adminRenameAlias": return await adminRenameAlias(env.DB, env, input, request);
+      case "adminAssignPhotoToAlias": return await adminAssignPhotoToAlias(env.DB, env, input, request);
       case "adminResults": return await adminResults(env.DB, env, input, request);
       case "adminCloseVote": {
         const auth = await requireAdmin(request, env, input);
