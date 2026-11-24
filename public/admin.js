@@ -2,6 +2,7 @@ const root = document.querySelector("#admin-root");
 let adminSecret = "";
 let state = null;
 let resultData = null;
+let legacyPhotosProcessing = false;
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -168,24 +169,20 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
       <section class="alias-board"><header><h3>Participants et alias</h3><p>Chaque carte accepte une photo par glisser-déposer.</p></header>
         <div class="alias-board-list">${participants.map((person) => `
           <article class="alias-card" data-alias="${escapeHtml(person.name)}">
-            <div class="alias-card-photo">${person.photoUrl ? `<img src="${escapeHtml(person.photoUrl)}" alt="Portrait de ${escapeHtml(person.name)}">` : `<span>${escapeHtml(person.name.trim().slice(0,1).toUpperCase() || "?")}</span>`}</div>
+            <div class="alias-card-photo-wrap"><div class="alias-card-photo">${person.photoUrl ? `<img src="${escapeHtml(person.photoUrl)}" alt="Portrait pixel art de ${escapeHtml(person.name)}">` : `<span>${escapeHtml(person.name.trim().slice(0,1).toUpperCase() || "?")}</span>`}</div>${person.photoUrl ? `<small class="pixel-art-label">Pixel art</small>` : ""}</div>
             <div class="alias-card-info"><label>Alias<input class="alias-name-input" maxlength="80" value="${escapeHtml(person.name)}"></label></div>
             <div class="alias-card-actions"><button class="admin-button secondary save-alias" type="button">Corriger l’alias</button><button class="admin-button assign-selected-photo" type="button" ${selectedPhoto ? "" : "disabled"}>Associer la photo choisie</button></div>
             <div class="alias-drop-target" tabindex="0" role="button">Déposer la photo ici</div>
           </article>`).join("") || `<p class="field-note">Aucun participant dans le catalogue.</p>`}</div>
       </section>
-      <section class="photo-library-board"><header><div><h3>Galerie des photos reçues</h3><p>${photoLibrary.length} photo(s) dans la galerie. Les portraits ajoutés ici sont carrés et pixelisés pour garder le rendu rétro.</p></div><label class="admin-button secondary add-photo-button">Ajouter des photos<input id="add-participant-photos" type="file" accept="image/*" multiple></label></header>
+      <section class="photo-library-board"><header><div><h3>Galerie des photos reçues</h3><p>${photoLibrary.length} photo(s) dans la galerie. La galerie affiche les portraits pixel art prêts à associer.</p></div><label class="admin-button secondary add-photo-button">Ajouter des photos<input id="add-participant-photos" type="file" accept="image/*" multiple></label></header>
         <div class="photo-library-grid">${photoLibrary.map((photo) => `
           <article class="library-photo-card ${photo.id === selectedPhoto ? "is-selected" : ""}" draggable="true" data-photo-id="${escapeHtml(photo.id)}" tabindex="0" role="button" aria-label="Photo ${escapeHtml(photo.name)}${photo.assignedAlias ? ", associée à " + escapeHtml(photo.assignedAlias) : ", non attribuée"}">
             ${!photo.assignedAlias ? `<button class="library-photo-delete" type="button" aria-label="Supprimer ${escapeHtml(photo.name)}" title="Supprimer cette photo">×</button>` : ""}
-            <div class="photo-gallery-pair">
-              <button class="photo-gallery-thumb" type="button" data-preview="original" aria-label="Voir l’original en grand">
-                <img src="${photo.originalData || photo.photoData}" alt="" loading="lazy" draggable="false"><small>Original</small>
-              </button>
-              <button class="photo-gallery-thumb" type="button" data-preview="pixel" aria-label="Voir le pixel art en grand">
-                <img src="${photo.photoData}" alt="" loading="lazy" draggable="false"><small>Pixel art</small>
-              </button>
-            </div>
+            <button class="library-photo-art" type="button" data-preview="pixel" aria-label="Voir le pixel art en grand">
+              <img src="${photo.photoData}" alt="" loading="lazy" draggable="false">
+              <small>Pixel art</small>
+            </button>
             <strong>${escapeHtml(photo.name)}</strong>
             <small>${photo.assignedAlias ? "Associée · " + escapeHtml(photo.assignedAlias) : "À attribuer"}</small>
           </article>`).join("") || `<div class="photo-library-empty"><strong>Aucune photo dans la galerie</strong><span>Ajoute les portraits reçus avec le bouton ci-dessus.</span></div>`}</div>
@@ -240,6 +237,52 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
     drop.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && selectedPhoto) { event.preventDefault(); assignPhoto(card, selectedPhoto); } });
   });
   target.querySelector("#add-participant-photos").addEventListener("change", (event) => addPhotoFiles([...event.target.files]));
+  if (!legacyPhotosProcessing && photoLibrary.some((photo) => photo.needsPixelation)) {
+    void processLegacyPhotos(photoLibrary.filter((photo) => photo.needsPixelation));
+  }
+}
+
+
+async function pixelArtFromDataUrl(dataUrl) {
+  const response = await fetch(dataUrl);
+  const source = await createImageBitmap(await response.blob());
+  const size = 384;
+  const canvas = document.createElement("canvas");
+  canvas.width = size; canvas.height = size;
+  const context = canvas.getContext("2d");
+  const scale = Math.max(size / source.width, size / source.height);
+  const width = source.width * scale, height = source.height * scale;
+  context.drawImage(source, (size - width) / 2, (size - height) / 2, width, height);
+  source.close?.();
+  const tiny = document.createElement("canvas");
+  tiny.width = 48; tiny.height = 48;
+  const tinyContext = tiny.getContext("2d");
+  tinyContext.imageSmoothingEnabled = false;
+  tinyContext.drawImage(canvas, 0, 0, 48, 48);
+  const art = document.createElement("canvas");
+  art.width = size; art.height = size;
+  const artContext = art.getContext("2d");
+  artContext.imageSmoothingEnabled = false;
+  artContext.drawImage(tiny, 0, 0, size, size);
+  return art.toDataURL("image/webp", .9);
+}
+
+async function processLegacyPhotos(photos) {
+  legacyPhotosProcessing = true;
+  managerMessage(`Mise en pixel art de ${photos.length} photo(s) existante(s)…`);
+  try {
+    for (const photo of photos) {
+      const photoData = await pixelArtFromDataUrl(photo.photoData);
+      await api("adminPixelateLibraryPhoto", { photoId: photo.id, photoData });
+    }
+    resultData = null;
+    renderDashboard(await api("adminState"));
+    managerMessage(`${photos.length} photo(s) convertie(s) en pixel art. Les originaux restent conservés dans le stockage privé.`);
+  } catch (error) {
+    managerMessage(`Certaines photos n’ont pas pu être retraitées : ${error.message}`, true);
+  } finally {
+    legacyPhotosProcessing = false;
+  }
 }
 
 function managerMessage(message, error = false) {
@@ -351,15 +394,9 @@ function openPhotoPreview(photo, initialView = "pixel") {
   if (!dialog) return;
   dialog.querySelector(".photo-preview-title").textContent = photo.name;
   const pair = dialog.querySelector(".photo-preview-pair");
-  pair.innerHTML = [
-    ["originalData", "Photo originale"],
-    ["photoData", "Version pixel art"],
-  ].map(([key, label]) => {
-    const src = photo[key] || photo.photoData;
-    return `<figure class="${(key === "originalData" && initialView === "original") || (key === "photoData" && initialView === "pixel") ? "is-focused" : ""}">
-      <img src="${src}" alt="${escapeHtml(label)} — ${escapeHtml(photo.name)}">
-      <figcaption>${label}</figcaption>
-    </figure>`;
-  }).join("");
+  pair.innerHTML = `<figure class="is-focused">
+    <img src="${photo.photoData}" alt="Pixel art — ${escapeHtml(photo.name)}">
+    <figcaption>Pixel art</figcaption>
+  </figure>`;
   if (!dialog.open) dialog.showModal();
 }
