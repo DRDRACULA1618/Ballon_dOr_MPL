@@ -796,3 +796,37 @@ body.ballot-page {
   .ballot-page .candidate-name { font-size:18px; padding-right:20px; }
   .nominee-footer { font-size:8px; }
 }
+
+/* Authenticated production ballot dashboard */
+.admin-page { min-height:100vh; background-color:#06080f; color:#f5f7fa; }
+.admin-page .site-topbar { position:sticky; top:0; z-index:30; height:70px; padding:0 max(20px,calc((100vw - 1160px)/2)); background:rgba(5,8,17,.84); border-bottom:1px solid rgba(255,255,255,.1); backdrop-filter:blur(20px); }
+.admin-page .topbar-label { color:#fcd49b; }
+.admin-page .admin-main { max-width:960px; }
+.admin-page .locked-admin,.admin-page .admin-panel { border:1px solid rgba(252,212,155,.17); border-radius:22px; background:linear-gradient(155deg,rgba(20,25,42,.82),rgba(8,11,20,.9)); color:#f5f7fa; box-shadow:inset 0 1px 0 rgba(252,212,155,.15),0 24px 48px rgba(0,0,0,.3); }
+.admin-page .locked-admin { margin-top:8vh; }
+.admin-page .admin-intro h1,.admin-page .locked-admin h1,.admin-page .admin-panel h2 { color:#f5f7fa; font-family:"Bebas Neue",Impact,sans-serif; font-weight:400; letter-spacing:.04em; }
+.admin-page .admin-intro p,.admin-page .locked-admin p,.admin-page .admin-panel p { color:#cbd5e1; }
+.admin-page .field { color:#cbd5e1; }
+.admin-page .field input { border:1px solid rgba(255,255,255,.2); background:rgba(7,11,22,.85); color:#f5f7fa; }
+.admin-page .admin-button { border:1px solid rgba(255,239,197,.5); border-radius:11px; background:linear-gradient(135deg,#fde0b6,#d5974e); color:#090c12; }
+.admin-page .admin-button.secondary { border-color:rgba(96,165,250,.4); background:rgba(16,21,36,.9); color:#cbd5e1; }
+.admin-page .admin-button.danger { border:1px solid rgba(255,136,125,.45); background:rgba(112,35,35,.8); color:#ffe4e0; }
+.admin-page .demo-ribbon { border-color:rgba(96,165,250,.35); background:linear-gradient(100deg,rgba(28,63,105,.34),rgba(20,25,42,.9)); color:#cfe5ff; }
+.admin-page .notice { border-color:rgba(243,192,125,.35); background:rgba(71,48,16,.42); color:#fce9c5; }
+.admin-page .notice strong,.admin-page .notice p { color:#fce9c5; }
+.admin-page .notice li { color:#e9d9bb; }
+.admin-page .field-note,.admin-page .admin-message { color:#94a3b8; }
+.admin-page .admin-message.error { color:#ff887d; }
+.admin-page .status-good { border-color:rgba(252,212,155,.35); background:rgba(243,192,125,.1); color:#fcd49b; }
+.admin-page .live-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.admin-page .live-stats p { display:grid; gap:4px; margin:0; padding:16px; border:1px solid rgba(255,255,255,.1); border-radius:15px; background:rgba(255,255,255,.035); }
+.admin-page .live-stats strong { color:#fcd49b; font:normal 28px "Bebas Neue",Impact,sans-serif; }
+.admin-page .live-stats span { color:#94a3b8; font-size:10px; }
+.admin-page .generated-links { margin-top:18px; }
+.admin-page .generated-links-grid { display:grid; gap:12px; }
+.admin-page .generated-links-grid .field { padding:14px; border:1px solid rgba(255,255,255,.1); border-radius:15px; background:rgba(255,255,255,.03); }
+.admin-page .result-group { border-color:rgba(255,255,255,.1); }
+.admin-page .result-group h3 { color:#fcd49b; }
+.admin-page .result-line { color:#cbd5e1; }
+.admin-page a { color:#fcd49b; }
+@media(max-width:640px) { .admin-page .site-topbar { padding:0 14px; } .admin-page .live-stats { grid-template-columns:1fr; } .admin-page .admin-main { padding-top:24px; } }
