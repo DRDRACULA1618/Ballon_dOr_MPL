@@ -169,7 +169,7 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
         <div class="alias-board-list">${participants.map((person) => `
           <article class="alias-card" data-alias="${escapeHtml(person.name)}">
             <div class="alias-card-photo">${person.photoUrl ? `<img src="${escapeHtml(person.photoUrl)}" alt="Portrait de ${escapeHtml(person.name)}">` : `<span>${escapeHtml(person.name.trim().slice(0,1).toUpperCase() || "?")}</span>`}</div>
-            <div class="alias-card-info"><label>Alias<input class="alias-name-input" maxlength="80" value="${escapeHtml(person.name)}"></label><small>${person.nomineeIds.length} nomination(s) · ${person.categoryIds.map((id) => escapeHtml(dashboardState.categories.find((c) => c.id === id)?.title || id)).join(" · ")}</small></div>
+            <div class="alias-card-info"><label>Alias<input class="alias-name-input" maxlength="80" value="${escapeHtml(person.name)}"></label></div>
             <div class="alias-card-actions"><button class="admin-button secondary save-alias" type="button">Corriger l’alias</button><button class="admin-button assign-selected-photo" type="button" ${selectedPhoto ? "" : "disabled"}>Associer la photo choisie</button></div>
             <div class="alias-drop-target" tabindex="0" role="button">Déposer la photo ici</div>
           </article>`).join("") || `<p class="field-note">Aucun participant dans le catalogue.</p>`}</div>
