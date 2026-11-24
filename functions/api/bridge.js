@@ -459,12 +459,47 @@ async function adminDeletePhoto(db, env, input, request) {
   const photoId = String(input.photoId || '');
   const photo = await db.prepare('SELECT id, assigned_alias FROM photo_library WHERE id = ?').bind(photoId).first();
   if (!photo) return fail(404, 'Cette photo n’est plus dans la galerie.');
-  if (photo.assigned_alias) return fail(409, 'Cette photo est déjà associée à un alias. Supprime uniquement les photos non attribuées depuis cette galerie.');
-  await db.batch([
-    db.prepare('DELETE FROM photo_library WHERE id = ? AND assigned_alias IS NULL').bind(photoId),
-    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'deleteUnassignedPhoto', ?)").bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ photoId })),
-  ]);
+  const writes = [];
+  if (photo.assigned_alias) {
+    const settings = await getSettings(db);
+    const catalog = catalogFromSettings(settings);
+    const normalize = (value) => String(value || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+    for (const category of catalog.categories) for (const nominee of category.nominees) {
+      if (normalize(nominee.name) === normalize(photo.assigned_alias)) {
+        writes.push(db.prepare('DELETE FROM nominee_photos WHERE nominee_id = ?').bind(nominee.id));
+      }
+    }
+  }
+  writes.push(db.prepare('DELETE FROM nominee_photos WHERE library_photo_id = ?').bind(photoId));
+  writes.push(db.prepare('DELETE FROM photo_library WHERE id = ?').bind(photoId));
+  writes.push(db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'deletePhoto', ?)")
+    .bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ photoId, assignedAlias: photo.assigned_alias || null })));
+  await db.batch(writes);
   return reply({ ok: true, photoId });
+}
+
+async function adminDeleteAllPhotos(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const photoRows = await db.prepare('SELECT id, assigned_alias FROM photo_library').all();
+  const photos = photoRows.results || [];
+  const settings = await getSettings(db);
+  const catalog = catalogFromSettings(settings);
+  const normalize = (value) => String(value || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+  const aliases = new Set(photos.map((photo) => normalize(photo.assigned_alias)).filter(Boolean));
+  const nomineeIds = new Set();
+  for (const category of catalog.categories) for (const nominee of category.nominees) {
+    if (aliases.has(normalize(nominee.name))) nomineeIds.add(nominee.id);
+  }
+  const writes = [
+    ...[...nomineeIds].map((id) => db.prepare('DELETE FROM nominee_photos WHERE nominee_id = ?').bind(id)),
+    db.prepare('DELETE FROM nominee_photos WHERE library_photo_id IS NOT NULL'),
+    db.prepare('DELETE FROM photo_library'),
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'deleteAllPhotos', ?)")
+      .bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ count: photos.length })),
+  ];
+  await db.batch(writes);
+  return reply({ ok: true, deletedCount: photos.length });
 }
 
 async function adminRenameAlias(db, env, input, request) {
@@ -707,6 +742,7 @@ export async function onRequestPost({ request, env }) {
       case "adminAddPhoto": return await adminAddPhoto(env.DB, env, input, request);
       case "adminPixelateLibraryPhoto": return await adminPixelateLibraryPhoto(env.DB, env, input, request);
       case "adminDeletePhoto": return await adminDeletePhoto(env.DB, env, input, request);
+      case "adminDeleteAllPhotos": return await adminDeleteAllPhotos(env.DB, env, input, request);
       case "adminRenameAlias": return await adminRenameAlias(env.DB, env, input, request);
       case "adminAssignPhotoToAlias": return await adminAssignPhotoToAlias(env.DB, env, input, request);
       case "adminResults": return await adminResults(env.DB, env, input, request);
