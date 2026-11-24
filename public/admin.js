@@ -175,10 +175,10 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
             <div class="alias-drop-target" tabindex="0" role="button">Déposer la photo ici</div>
           </article>`).join("") || `<p class="field-note">Aucun participant dans le catalogue.</p>`}</div>
       </section>
-      <section class="photo-library-board"><header><div><h3>Galerie des photos reçues</h3><p>${photoLibrary.length} photo(s) dans la galerie. La galerie affiche les portraits pixel art prêts à associer.</p></div><label class="admin-button secondary add-photo-button">Ajouter des photos<input id="add-participant-photos" type="file" accept="image/*" multiple></label></header>
+      <section class="photo-library-board"><header><div><h3>Galerie des photos reçues</h3><p>${photoLibrary.length} photo(s) dans la galerie. La galerie affiche les portraits pixel art prêts à associer.</p></div><div class="photo-library-actions"><button class="admin-button danger delete-all-photos" type="button" ${photoLibrary.length ? "" : "disabled"}>Tout supprimer</button><label class="admin-button secondary add-photo-button">Ajouter des photos<input id="add-participant-photos" type="file" accept="image/*" multiple></label></div></header>
         <div class="photo-library-grid">${photoLibrary.map((photo) => `
           <article class="library-photo-card ${photo.id === selectedPhoto ? "is-selected" : ""}" draggable="true" data-photo-id="${escapeHtml(photo.id)}" tabindex="0" role="button" aria-label="Photo ${escapeHtml(photo.name)}${photo.assignedAlias ? ", associée à " + escapeHtml(photo.assignedAlias) : ", non attribuée"}">
-            ${!photo.assignedAlias ? `<button class="library-photo-delete" type="button" aria-label="Supprimer ${escapeHtml(photo.name)}" title="Supprimer cette photo">×</button>` : ""}
+            <button class="library-photo-delete" type="button" aria-label="Supprimer ${escapeHtml(photo.name)}" title="Supprimer cette photo">×</button>
             <button class="library-photo-art" type="button" data-preview="pixel" aria-label="Voir le pixel art en grand">
               <img src="${photo.photoData}" alt="" loading="lazy" draggable="false">
               <small>Pixel art</small>
@@ -237,6 +237,7 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
     drop.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && selectedPhoto) { event.preventDefault(); assignPhoto(card, selectedPhoto); } });
   });
   target.querySelector("#add-participant-photos").addEventListener("change", (event) => addPhotoFiles([...event.target.files]));
+  target.querySelector(".delete-all-photos")?.addEventListener("click", deleteAllPhotos);
   if (!legacyPhotosProcessing && photoLibrary.some((photo) => photo.needsPixelation)) {
     void processLegacyPhotos(photoLibrary.filter((photo) => photo.needsPixelation));
   }
@@ -287,6 +288,25 @@ async function processLegacyPhotos(photos) {
 
 function managerMessage(message, error = false) {
   showMessage("admin-message", message, error);
+}
+
+
+async function deleteAllPhotos(event) {
+  const count = state?.photoLibrary?.length || 0;
+  if (!count) return;
+  if (!window.confirm(`Supprimer les ${count} photos de la galerie ? Les portraits associés aux alias disparaîtront aussi des pages publiques.`)) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const result = await api("adminDeleteAllPhotos");
+    window.selectedLibraryPhotoId = "";
+    resultData = null;
+    renderDashboard(await api("adminState"));
+    managerMessage(`${result.deletedCount} photo(s) supprimée(s) de la galerie.`);
+  } catch (error) {
+    managerMessage(error.message, true);
+    button.disabled = false;
+  }
 }
 
 async function saveAlias(card) {
