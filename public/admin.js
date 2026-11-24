@@ -28,17 +28,34 @@ function showMessage(id, message, error = false) {
 }
 
 function renderLinks(links, expiresAt) {
-  const section = document.querySelector("#generated-links");
+  const section = document.querySelector('#generated-links');
   if (!section) return;
   section.hidden = false;
-  section.innerHTML = `<h3>Les 7 liens personnels</h3><p class="field-note">Enregistre et partage chaque lien à une personne différente. Chaque lien expire après son premier vote ou à la clôture du scrutin (${escapeHtml(new Date(expiresAt).toLocaleString("fr-FR", { timeZone:"Africa/Abidjan" }))}). Ces liens ne sont pas envoyés par e-mail.</p><div class="generated-links-grid">${links.map((item) => `<label class="field"><span>${escapeHtml(item.name)}</span><input readonly value="${escapeHtml(item.url)}" /><button class="admin-button secondary copy-link" type="button">Copier ce lien</button></label>`).join("")}</div>`;
-  section.querySelectorAll(".copy-link").forEach((button, index) => button.addEventListener("click", async () => {
-    const input = section.querySelectorAll("input")[index];
-    try { await navigator.clipboard.writeText(input.value); button.textContent = "Copié"; }
-    catch { input.select(); button.textContent = "Sélectionne puis Ctrl+C"; }
+  const deadline = expiresAt ? new Date(expiresAt).toLocaleString('fr-FR', { timeZone: 'Africa/Abidjan' }) : 'date de clôture';
+  const statuses = {
+    available: ['✓', 'Disponible', 'available'],
+    used: ['✕', 'Déjà utilisé', 'inactive'],
+    disabled: ['✕', 'Désactivé par l’organisateur', 'inactive'],
+    expired: ['✕', 'Expiré', 'inactive'],
+    closed: ['✕', 'Scrutin clôturé', 'inactive'],
+    unrecoverable: ['!', 'Ancien lien : URL non récupérable', 'unrecoverable'],
+  };
+  section.innerHTML = '<h3>Historique des liens personnels</h3><p class="field-note">Les liens sont conservés ici et restent consultables après reconnexion. Chaque lien ne permet qu’un seul vote et expire après utilisation ou à la clôture du scrutin (' + escapeHtml(deadline) + ', heure d’Abidjan). Les liens ne sont pas envoyés par e-mail. Une croix rouge indique un lien inutilisable.</p>' +
+    (links.length ? '<div class="generated-links-grid">' + links.map((item) => {
+      const status = statuses[item.status] || statuses.unrecoverable;
+      const url = item.url ? '<input readonly aria-label="Lien de ' + escapeHtml(item.name) + '" value="' + escapeHtml(item.url) + '">' : '<p class="link-unavailable">' + (item.status === 'unrecoverable' ? 'Ce lien a été créé avant la sauvegarde sécurisée des clés. Son adresse ne peut pas être restaurée.' : 'Aucun lien actif à partager.') + '</p>';
+      const copy = item.url ? '<button class="admin-button secondary copy-link" type="button">Copier</button>' : '';
+      const disable = ['available', 'unrecoverable'].includes(item.status) ? '<button class="admin-button danger disable-link" data-link-id="' + escapeHtml(item.id) + '" type="button">Désactiver</button>' : '';
+      const expiry = new Date(item.expiresAt).toLocaleString('fr-FR', { timeZone: 'Africa/Abidjan' });
+      return '<article class="generated-link-card"><div class="generated-link-top"><strong>' + escapeHtml(item.name) + '</strong><span class="link-status ' + status[2] + '"><span aria-hidden="true">' + status[0] + '</span> ' + status[1] + '</span></div><div class="generated-link-url">' + url + '</div><div class="generated-link-bottom"><small>Expire le ' + escapeHtml(expiry) + ' · Abidjan</small><div class="generated-link-actions">' + copy + disable + '</div></div></article>';
+    }).join('') + '</div>' : '<p class="field-note">Aucun lien personnel n’a encore été créé.</p>');
+  section.querySelectorAll('.copy-link').forEach((button) => button.addEventListener('click', async () => {
+    const input = button.closest('.generated-link-card').querySelector('input');
+    try { await navigator.clipboard.writeText(input.value); button.textContent = 'Copié'; }
+    catch { input.select(); button.textContent = 'Sélectionne puis Ctrl+C'; }
   }));
+  section.querySelectorAll('.disable-link').forEach((button) => button.addEventListener('click', () => disableOfficialLink(button.dataset.linkId)));
 }
-
 function renderResults(data) {
   resultData = data;
   const target = document.querySelector("#results-content");
@@ -53,15 +70,15 @@ function renderDashboard(nextState, links = null) {
     ? `<aside class="notice"><span class="notice-icon">!</span><div><strong>Le catalogue comporte des éléments à vérifier.</strong><ul>${state.pending.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul><p>Confirme les catégories et les noms avant de partager les liens du scrutin.</p></div></aside>`
     : `<p class="status-good">Catalogue chargé · ${state.categoryCount} catégories · ${state.nominationCount} nominés.</p>`;
   const closeDate = state.closesAt ? new Date(state.closesAt).toLocaleString("fr-FR", { timeZone:"Africa/Abidjan" }) : "à définir";
-  root.innerHTML = `<div class="admin-intro"><p class="eyebrow">LE CLUB MPL 11 · ÉDITION 2026</p><h1>Scrutin officiel</h1><p>Crée sept liens individuels à partager toi-même. Chaque lien est utilisable une fois et expire après le vote ou à la clôture du scrutin.</p></div>
+  root.innerHTML = `<div class="admin-intro"><p class="eyebrow">LE CLUB MPL 11 · ÉDITION 2026</p><h1>Scrutin officiel</h1><p>Crée autant de liens individuels que nécessaire. Chaque lien est utilisable une fois et expire après le vote ou à la clôture du scrutin.</p></div>
     <div class="demo-ribbon">MODE RÉEL — les votes officiels sont enregistrés dans Cloudflare D1 et comptés séparément des anciens bulletins de test.</div>
     ${warning}
     <section class="admin-panel"><h2>État du scrutin</h2><div class="live-stats"><p><strong>${state.officialBallots}</strong><span>votes officiels</span></p><p><strong>${state.officialLinks}</strong><span>liens non utilisés</span></p><p><strong>${state.testBallots}</strong><span>anciens tests isolés</span></p></div><p class="field-note">Clôture configurée : ${escapeHtml(closeDate)} · fuseau Abidjan.</p><button class="admin-button secondary" id="refresh-state" type="button">Actualiser l’état</button></section>
-    <section class="admin-panel"><h2>Liens personnels de vote</h2><p>Les liens sont affichés une seule fois après génération. Copie-les et conserve une copie sécurisée avant de quitter cette page. Un avertissement ci-dessus indique les catégories et graphies qui doivent être validées avant la génération.</p><div class="admin-row"><button class="admin-button" id="create-official-links" type="button">${state.officialLinks ? "Remplacer le lot de liens" : "Générer les 7 liens"}</button><span class="admin-message" id="links-message" role="status"></span></div><div id="generated-links" class="generated-links" hidden></div></section>
+    <section class="admin-panel"><h2>Liens personnels de vote</h2><p>Les liens générés restent disponibles dans cet espace après reconnexion. Tu peux désactiver chaque lien séparément ou en ajouter de nouveaux sans invalider les liens existants. Choisis entre 1 et 1 000 liens par création ; le nombre total n’est pas plafonné.</p><div class="admin-row link-create-row"><label class="field quantity-field" for="link-count">Nombre de liens à ajouter<input id="link-count" type="number" min="1" max="1000" step="1" value="7" /></label><button class="admin-button" id="create-official-links" type="button">Créer les liens</button><span class="admin-message" id="links-message" role="status"></span></div><div id="generated-links" class="generated-links" hidden></div></section>
     <section class="admin-panel"><h2>Résultats officiels</h2><p>Les résultats sont agrégés par catégorie. Les choix individuels ne sont pas dévoilés.</p><div class="admin-row"><button class="admin-button secondary" id="load-results" type="button">Charger les résultats</button><button class="admin-button secondary" id="export-results" type="button" hidden>Exporter en CSV</button></div><div id="results-content" class="admin-results"></div></section>
     <section class="admin-panel"><h2>Clôture</h2><p>La clôture désactive immédiatement les liens encore ouverts.</p><button class="admin-button danger" id="close-vote" type="button" ${state.isOpen ? "" : "disabled"}>Clôturer le scrutin</button><span class="admin-message" id="close-message" role="status"></span></section>
     <p><a href="./">← Retour à la page publique</a></p>`;
-  if (links) renderLinks(links.links, links.expiresAt);
+  renderLinks(state.links || [], state.closesAt);
   if (resultData) renderResults(resultData);
   document.querySelector("#refresh-state").addEventListener("click", refreshState);
   document.querySelector("#create-official-links").addEventListener("click", createOfficialLinks);
@@ -75,18 +92,35 @@ async function refreshState() {
   catch (error) { showMessage("login-message", error.message, true); }
 }
 async function createOfficialLinks() {
-  if (state.officialLinks && !window.confirm("Cela invalidera les liens personnels non utilisés et en créera sept nouveaux. Continuer ?")) return;
-  const button = document.querySelector("#create-official-links");
+  const input = document.querySelector('#link-count');
+  const count = Number(input.value);
+  if (!Number.isSafeInteger(count) || count < 1 || count > 1000) {
+    showMessage('links-message', 'Choisis un nombre entre 1 et 1 000.', true);
+    return;
+  }
+  const button = document.querySelector('#create-official-links');
   button.disabled = true;
-  showMessage("links-message", "Génération des sept liens…");
+  showMessage('links-message', 'Création des liens…');
   try {
-    const links = await api("adminCreateOfficialLinks");
+    await api('adminCreateOfficialLinks', { count });
     resultData = null;
-    renderDashboard(await api("adminState"), links);
-    showMessage("links-message", "Les sept liens sont créés. Copie-les avant de quitter cette page.");
+    renderDashboard(await api('adminState'));
+    showMessage('links-message', count + ' lien(s) ajouté(s). Ils sont conservés dans cet espace.');
   } catch (error) {
-    showMessage("links-message", error.message, true);
+    showMessage('links-message', error.message, true);
     button.disabled = false;
+  }
+}
+
+async function disableOfficialLink(linkId) {
+  if (!window.confirm('Désactiver ce lien ? Il ne pourra plus être utilisé pour voter.')) return;
+  try {
+    await api('adminDisableOfficialLink', { linkId });
+    resultData = null;
+    renderDashboard(await api('adminState'));
+    showMessage('links-message', 'Le lien a été désactivé.');
+  } catch (error) {
+    showMessage('links-message', error.message, true);
   }
 }
 async function loadResults() {
