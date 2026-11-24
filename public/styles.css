@@ -656,3 +656,117 @@ body.ballot-page {
 @media (prefers-reduced-motion: reduce) {
   .ball-journey::before, .ball-journey::after, .cinematic-stars::before { animation: none; }
 }
+
+
+/* Design système repris du prototype Le CLUB MPL 11 : Liquid Glass + rebords rétroéclairés. */
+.font-display { font-family: "Bebas Neue", Impact, sans-serif; letter-spacing: .035em; }
+.liquid-glass {
+  position: relative;
+  background: linear-gradient(155deg, rgba(20,25,42,.78), rgba(11,15,27,.72) 55%, rgba(8,11,20,.82));
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid rgba(252,212,155,.17);
+  box-shadow: inset 0 1px 0 rgba(252,212,155,.2), inset 0 -1px 0 rgba(255,255,255,.04), 0 24px 48px -14px rgba(2,5,14,.78);
+}
+.nominee-glass {
+  background: linear-gradient(160deg, rgba(22,28,46,.66), rgba(11,16,29,.73));
+  backdrop-filter: blur(14px) saturate(125%);
+  -webkit-backdrop-filter: blur(14px) saturate(125%);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 10px 26px -12px rgba(2,6,18,.65);
+}
+.ballot-page .site-topbar {
+  position: sticky; top: 0; z-index: 30; height: 70px; gap: 20px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  background: rgba(5,8,17,.78); backdrop-filter: blur(20px) saturate(135%);
+  box-shadow: 0 8px 30px rgba(0,0,0,.2);
+}
+.club-wordmark { display:grid; gap:2px; flex:0 0 auto; color:#f5f7fa; text-decoration:none; }
+.wordmark-name { font-family:"Bebas Neue",Impact,sans-serif; font-size:26px; letter-spacing:.05em; line-height:1; }
+.wordmark-edition { color:#fcd49b; font-size:8px; font-weight:800; letter-spacing:.18em; }
+.club-nav { display:flex; gap:26px; align-items:center; margin-left:auto; }
+.club-nav a { color:#b8c3d6; font-size:12px; text-decoration:none; transition:color .18s; }
+.club-nav a:hover { color:#fff; }
+.topbar-submit { min-height:40px; display:flex; gap:10px; align-items:center; justify-content:center; padding:0 14px; border:1px solid rgba(243,192,125,.45); border-radius:12px; background:rgba(16,21,36,.85); color:#fcd49b; font-size:11px; text-decoration:none; box-shadow:0 0 16px -6px rgba(243,192,125,.38); }
+.ballot-page .hero {
+  width:calc(100% - 40px); max-width:1160px; min-height:485px; margin:24px auto 0;
+  overflow:hidden; border:1px solid rgba(252,212,155,.2); border-radius:28px;
+  background:linear-gradient(90deg,rgba(5,8,17,.94),rgba(5,8,17,.82) 54%,rgba(5,8,17,.58)),linear-gradient(0deg,rgba(5,8,17,.78),transparent 65%),url("./assets/stadium-hero.jpg") center/cover;
+  box-shadow:inset 0 1px 0 rgba(252,212,155,.25),0 26px 70px rgba(0,0,0,.42);
+}
+.ballot-page .hero::before { z-index:0; }
+.ballot-page .hero::after { border-color:rgba(252,212,155,.12); }
+.ballot-page .hero-inner { max-width:1080px; grid-template-columns:minmax(0,1fr) minmax(260px,.5fr); }
+.ballot-page .hero h1 { font-family:"Bebas Neue",Impact,sans-serif; font-weight:400; letter-spacing:.025em; }
+.ballot-page .hero-subtitle { color:#cbd5e1; }
+.hero-ball-stage { position:relative; display:grid; min-height:330px; place-items:center; isolation:isolate; }
+.hero-ball-halo { position:absolute; width:68%; aspect-ratio:1; border-radius:50%; background:rgba(59,130,246,.25); filter:blur(50px); }
+.hero-ball-orbit { position:absolute; width:85%; aspect-ratio:1; border:1px solid rgba(252,212,155,.28); border-radius:50%; box-shadow:0 0 0 24px rgba(96,165,250,.035),0 0 44px rgba(59,130,246,.22); transform:rotateX(62deg) rotateZ(-22deg); }
+.hero-ball { position:relative; z-index:1; width:min(90%,250px); overflow:visible; filter:drop-shadow(0 24px 32px rgba(0,0,0,.55)); animation:hero-ball-spin 26s linear infinite; }
+@keyframes hero-ball-spin { to { transform:rotate(360deg); } }
+.hero-art-caption { position:absolute; right:4px; bottom:0; color:rgba(252,212,155,.68); font-size:8px; font-weight:800; letter-spacing:.2em; }
+.hero-info { display:grid; grid-template-columns:1.15fr .85fr; gap:18px; width:calc(100% - 40px); max-width:1160px; margin:20px auto 0; }
+.info-panel { min-width:0; padding:24px 26px; border-radius:22px; scroll-margin-top:90px; }
+.info-panel::before { position:absolute; top:0; left:8%; right:8%; height:1px; content:""; background:linear-gradient(90deg,transparent,rgba(252,212,155,.75),transparent); }
+.info-kicker { margin:0 0 8px; color:#fcd49b; font-size:9px; font-weight:800; letter-spacing:.2em; }
+.info-kicker.blue { color:#60a5fa; }
+.info-panel h2 { margin:0; color:#f5f7fa; font-family:"Bebas Neue",Impact,sans-serif; font-size:25px; font-weight:400; letter-spacing:.035em; }
+.info-date { margin:12px 0 0; color:#fcd49b; font-size:14px; font-weight:700; }
+.info-copy,.info-panel li { color:#cbd5e1; font-size:12px; line-height:1.65; }
+.info-panel ul { display:grid; gap:5px; margin:10px 0 0; padding-left:18px; }
+.info-panel li::marker { color:#f3c07d; }
+.ballot-page .main-wrap { margin-top:24px; }
+.ballot-page .progress-panel,.ballot-page .category-card {
+  background:linear-gradient(155deg,rgba(20,25,42,.78),rgba(11,15,27,.72) 55%,rgba(8,11,20,.82));
+  backdrop-filter:blur(18px) saturate(130%); -webkit-backdrop-filter:blur(18px) saturate(130%);
+  border:1px solid rgba(252,212,155,.17);
+  box-shadow:inset 0 1px 0 rgba(252,212,155,.16),0 18px 42px rgba(0,0,0,.26);
+}
+.ballot-page .category-card::before { width:2px; background:linear-gradient(180deg,transparent,#60a5fa,#fcd49b,transparent); }
+.ballot-page .category-head { border-bottom:1px solid rgba(255,255,255,.08); }
+.ballot-page .category-title { font-family:"Bebas Neue",Impact,sans-serif; font-size:21px; font-weight:400; letter-spacing:.04em; }
+.ballot-page .candidate {
+  background:linear-gradient(150deg,rgba(25,32,49,.72),rgba(11,16,29,.78));
+  backdrop-filter:blur(12px) saturate(125%); -webkit-backdrop-filter:blur(12px) saturate(125%);
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 10px 26px -14px rgba(2,6,18,.7);
+}
+.ballot-page .candidate:hover { border-color:rgba(96,165,250,.58); box-shadow:0 0 0 1px rgba(59,130,246,.2),0 0 24px -10px rgba(96,165,250,.34); }
+.ballot-page .candidate:has(input:checked) {
+  border-color:rgba(252,212,155,.9);
+  background:linear-gradient(155deg,rgba(44,34,22,.72),rgba(16,21,36,.86));
+  box-shadow:inset 0 1px 0 rgba(252,212,155,.3),0 0 0 1px rgba(243,192,125,.36),0 0 28px -12px rgba(243,192,125,.32);
+}
+.ballot-page .candidate-name { color:#f5f7fa; }
+.ballot-page .candidate:has(input:checked) .candidate-name { color:#ffe7ad; }
+.ballot-page .submit-area { border-color:rgba(255,255,255,.12); }
+.ballot-page .primary-button {
+  background:linear-gradient(135deg,#fde0b6 0%,#f3c07d 54%,#d5974e 100%);
+  box-shadow:inset 0 1px 0 rgba(255,250,240,.65),0 10px 28px -8px rgba(243,192,125,.48),0 0 18px -6px rgba(59,130,246,.22);
+}
+.ballot-page .primary-button:hover:not(:disabled) { filter:brightness(1.05); transform:translateY(-1px); }
+.ballot-page .state-view,.ballot-page .auth-view { color:#f5f7fa; }
+.ballot-page .auth-view,.ballot-page .state-icon { background-color:rgba(14,18,29,.75); border-color:rgba(252,212,155,.2); }
+@media(max-width:800px) {
+  .club-nav { gap:14px; }
+  .ballot-page .hero-inner { grid-template-columns:minmax(0,1fr) minmax(210px,.55fr); }
+  .hero-ball-stage { min-height:270px; }
+  .hero-ball { width:min(92%,210px); }
+}
+@media(max-width:640px) {
+  .ballot-page .site-topbar { height:64px; padding:0 14px; }
+  .wordmark-name { font-size:21px; }
+  .wordmark-edition { font-size:7px; }
+  .club-nav { display:none; }
+  .topbar-submit { min-height:36px; padding:0 10px; font-size:9px; }
+  .ballot-page .hero { width:calc(100% - 22px); min-height:0; margin-top:12px; padding:28px 17px 26px; border-radius:21px; }
+  .ballot-page .hero-inner { grid-template-columns:1fr; gap:0; }
+  .ballot-page .hero-copy { padding:0; }
+  .ballot-page .hero h1 { font-size:clamp(48px,14vw,67px); }
+  .hero-ball-stage { min-height:185px; margin-top:5px; }
+  .hero-ball { width:170px; }
+  .hero-info { grid-template-columns:1fr; gap:12px; width:calc(100% - 22px); margin-top:13px; }
+  .info-panel { padding:19px; }
+  .ballot-page .main-wrap { margin-top:20px; }
+}
+@media(prefers-reduced-motion:reduce) { .hero-ball { animation:none; } }
