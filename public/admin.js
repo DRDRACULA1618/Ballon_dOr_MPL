@@ -177,21 +177,52 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
       <section class="photo-library-board"><header><div><h3>Galerie des photos reçues</h3><p>${photoLibrary.length} photo(s) dans la galerie. Les portraits ajoutés ici sont carrés et pixelisés pour garder le rendu rétro.</p></div><label class="admin-button secondary add-photo-button">Ajouter des photos<input id="add-participant-photos" type="file" accept="image/*" multiple></label></header>
         <div class="photo-library-grid">${photoLibrary.map((photo) => `
           <article class="library-photo-card ${photo.id === selectedPhoto ? "is-selected" : ""}" draggable="true" data-photo-id="${escapeHtml(photo.id)}" tabindex="0" role="button" aria-label="Photo ${escapeHtml(photo.name)}${photo.assignedAlias ? ", associée à " + escapeHtml(photo.assignedAlias) : ", non attribuée"}">
-            <div class="library-photo-square"><img src="${photo.photoData}" alt="" loading="lazy" draggable="false"></div>
+            ${!photo.assignedAlias ? `<button class="library-photo-delete" type="button" aria-label="Supprimer ${escapeHtml(photo.name)}" title="Supprimer cette photo">×</button>` : ""}
+            <div class="photo-gallery-pair">
+              <button class="photo-gallery-thumb" type="button" data-preview="original" aria-label="Voir l’original en grand">
+                <img src="${photo.originalData || photo.photoData}" alt="" loading="lazy" draggable="false"><small>Original</small>
+              </button>
+              <button class="photo-gallery-thumb" type="button" data-preview="pixel" aria-label="Voir le pixel art en grand">
+                <img src="${photo.photoData}" alt="" loading="lazy" draggable="false"><small>Pixel art</small>
+              </button>
+            </div>
             <strong>${escapeHtml(photo.name)}</strong>
             <small>${photo.assignedAlias ? "Associée · " + escapeHtml(photo.assignedAlias) : "À attribuer"}</small>
           </article>`).join("") || `<div class="photo-library-empty"><strong>Aucune photo dans la galerie</strong><span>Ajoute les portraits reçus avec le bouton ci-dessus.</span></div>`}</div>
       </section>
-    </div>`;
+    </div>
+    <dialog class="photo-preview-dialog" id="photo-preview-dialog" aria-label="Aperçu du portrait">
+      <form method="dialog"><button class="photo-preview-close" aria-label="Fermer">×</button></form>
+      <h3 class="photo-preview-title"></h3>
+      <div class="photo-preview-pair"></div>
+    </dialog>`;
 
   target.querySelectorAll(".library-photo-card").forEach((card) => {
     card.addEventListener("dragstart", (event) => {
       event.dataTransfer?.setData("text/plain", card.dataset.photoId);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
     });
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest(".library-photo-delete,.photo-gallery-thumb")) return;
       window.selectedLibraryPhotoId = card.dataset.photoId;
       renderNomineeManager(participants, photoLibrary, dashboardState);
+    });
+    card.querySelectorAll(".photo-gallery-thumb").forEach((button) => button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const photo = photoLibrary.find((item) => item.id === card.dataset.photoId);
+      if (photo) openPhotoPreview(photo, button.dataset.preview);
+    }));
+    card.querySelector(".library-photo-delete")?.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await api("adminDeletePhoto", { photoId: card.dataset.photoId });
+        if (window.selectedLibraryPhotoId === card.dataset.photoId) window.selectedLibraryPhotoId = "";
+        resultData = null;
+        renderDashboard(await api("adminState"));
+        managerMessage("Photo supprimée de la galerie.");
+      } catch (error) { managerMessage(error.message, true); button.disabled = false; }
     });
     card.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); card.click(); } });
   });
@@ -251,8 +282,8 @@ async function addPhotoFiles(files) {
   let uploaded = 0;
   try {
     for (const file of files) {
-      const photoData = await imageDataUrl(file);
-      await api("adminAddPhoto", { photoId: crypto.randomUUID(), name: file.name.split(".").slice(0, -1).join(".") || file.name, photoData });
+      const { originalData, photoData } = await imageDataUrl(file);
+      await api("adminAddPhoto", { photoId: crypto.randomUUID(), name: file.name.split(".").slice(0, -1).join(".") || file.name, photoData, originalData });
       uploaded++;
     }
     renderDashboard(await api("adminState"));
@@ -279,20 +310,27 @@ async function imageDataUrl(file) {
   if (!file.type.startsWith("image/")) throw new Error("Choisis un fichier image.");
   const source = await createImageBitmap(file);
   const size = 384;
-  const pixelSize = 96;
-  const pixelCanvas = document.createElement("canvas");
-  pixelCanvas.width = pixelSize; pixelCanvas.height = pixelSize;
-  const pixelContext = pixelCanvas.getContext("2d");
-  const scale = Math.max(pixelSize / source.width, pixelSize / source.height);
+  const originalCanvas = document.createElement("canvas");
+  originalCanvas.width = size; originalCanvas.height = size;
+  const originalContext = originalCanvas.getContext("2d");
+  const scale = Math.max(size / source.width, size / source.height);
   const width = source.width * scale, height = source.height * scale;
-  pixelContext.drawImage(source, (pixelSize - width) / 2, (pixelSize - height) / 2, width, height);
+  originalContext.drawImage(source, (size - width) / 2, (size - height) / 2, width, height);
   source.close?.();
-  const canvas = document.createElement("canvas");
-  canvas.width = size; canvas.height = size;
-  const context = canvas.getContext("2d");
-  context.imageSmoothingEnabled = false;
-  context.drawImage(pixelCanvas, 0, 0, size, size);
-  return canvas.toDataURL("image/webp", 0.9);
+  const pixelCanvas = document.createElement("canvas");
+  pixelCanvas.width = 48; pixelCanvas.height = 48;
+  const pixelContext = pixelCanvas.getContext("2d");
+  pixelContext.imageSmoothingEnabled = false;
+  pixelContext.drawImage(originalCanvas, 0, 0, 48, 48);
+  const artCanvas = document.createElement("canvas");
+  artCanvas.width = size; artCanvas.height = size;
+  const artContext = artCanvas.getContext("2d");
+  artContext.imageSmoothingEnabled = false;
+  artContext.drawImage(pixelCanvas, 0, 0, size, size);
+  return {
+    originalData: originalCanvas.toDataURL("image/webp", 0.84),
+    photoData: artCanvas.toDataURL("image/webp", 0.9),
+  };
 }
 
 async function uploadNomineePhoto(row, file) {
@@ -300,10 +338,28 @@ async function uploadNomineePhoto(row, file) {
   drop.classList.add("is-uploading");
   nomineeMessage(row, "Préparation et envoi de la photo…");
   try {
-    const photoData = await imageDataUrl(file);
+    const { photoData } = await imageDataUrl(file);
     await api("adminSetNomineePhoto", { categoryId: row.dataset.categoryId, nomineeId: row.dataset.nomineeId, photoData });
     resultData = null;
     renderDashboard(await api("adminState"));
     showMessage("login-message", "Photo attribuée au nominé.");
   } catch (error) { nomineeMessage(row, error.message, true); drop.classList.remove("is-uploading"); }
+}
+
+function openPhotoPreview(photo, initialView = "pixel") {
+  const dialog = document.querySelector("#photo-preview-dialog");
+  if (!dialog) return;
+  dialog.querySelector(".photo-preview-title").textContent = photo.name;
+  const pair = dialog.querySelector(".photo-preview-pair");
+  pair.innerHTML = [
+    ["originalData", "Photo originale"],
+    ["photoData", "Version pixel art"],
+  ].map(([key, label]) => {
+    const src = photo[key] || photo.photoData;
+    return `<figure class="${(key === "originalData" && initialView === "original") || (key === "photoData" && initialView === "pixel") ? "is-focused" : ""}">
+      <img src="${src}" alt="${escapeHtml(label)} — ${escapeHtml(photo.name)}">
+      <figcaption>${label}</figcaption>
+    </figure>`;
+  }).join("");
+  if (!dialog.open) dialog.showModal();
 }
