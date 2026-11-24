@@ -1,6 +1,7 @@
 const root = document.querySelector("#admin-root");
 let adminSecret = "";
 let state = null;
+let resultData = null;
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -26,95 +27,96 @@ function showMessage(id, message, error = false) {
   node.classList.add("visible");
 }
 
-function renderDashboard(nextState) {
+function renderLinks(links, expiresAt) {
+  const section = document.querySelector("#generated-links");
+  if (!section) return;
+  section.hidden = false;
+  section.innerHTML = `<h3>Les 7 liens personnels</h3><p class="field-note">Enregistre et partage chaque lien à une personne différente. Chaque lien expire après son premier vote ou à la clôture du scrutin (${escapeHtml(new Date(expiresAt).toLocaleString("fr-FR", { timeZone:"Africa/Abidjan" }))}). Ces liens ne sont pas envoyés par e-mail.</p><div class="generated-links-grid">${links.map((item) => `<label class="field"><span>${escapeHtml(item.name)}</span><input readonly value="${escapeHtml(item.url)}" /><button class="admin-button secondary copy-link" type="button">Copier ce lien</button></label>`).join("")}</div>`;
+  section.querySelectorAll(".copy-link").forEach((button, index) => button.addEventListener("click", async () => {
+    const input = section.querySelectorAll("input")[index];
+    try { await navigator.clipboard.writeText(input.value); button.textContent = "Copié"; }
+    catch { input.select(); button.textContent = "Sélectionne puis Ctrl+C"; }
+  }));
+}
+
+function renderResults(data) {
+  resultData = data;
+  const target = document.querySelector("#results-content");
+  if (!target) return;
+  target.innerHTML = `<p class="field-note">${data.totalBallots} bulletin(s) officiel(s) comptabilisé(s). Les réponses individuelles ne sont pas affichées.</p>${data.categories.map((category) => `<section class="result-group"><h3>${escapeHtml(category.title)}</h3>${category.nominees.map((nominee) => `<div class="result-line"><span>${escapeHtml(nominee.name)}</span><strong>${nominee.votes}</strong></div>`).join("")}</section>`).join("")}`;
+  document.querySelector("#export-results").hidden = false;
+}
+
+function renderDashboard(nextState, links = null) {
   state = nextState;
-  const pending = state.pending?.length
-    ? `<aside class="notice"><span class="notice-icon" aria-hidden="true">!</span><div><strong>Le catalogue contient des points à valider pour le scrutin officiel.</strong><p>Le test ci-dessous utilise le catalogue actuel et reste séparé des votes officiels.</p></div></aside>`
-    : `<p class="status-good">Catalogue prêt · ${state.categoryCount} catégories · ${state.nominationCount} nominations.</p>`;
-  const latest = state.lastTestBallot
-    ? `<p class="field-note">Dernier vote test enregistré : ${escapeHtml(new Date(state.lastTestBallot.createdAt).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan" }))}. Reçu : <code>${escapeHtml(state.lastTestBallot.id)}</code></p>`
-    : `<p class="field-note">Aucun bulletin test enregistré pour le moment.</p>`;
-
-  root.innerHTML = `<div class="admin-intro"><p class="eyebrow">MPL Ballin’ d’Or 2026</p><h1>Test du vote</h1><p>Cette page permet de vérifier le parcours et l’enregistrement dans D1. Le lien créé est un lien de test à usage unique, valable une heure.</p></div>
-    <div class="demo-ribbon">MODE TEST — ces bulletins sont marqués comme tests et ne doivent pas être utilisés pour le scrutin officiel.</div>
-    ${pending}
-    <section class="admin-panel"><h2>État du stockage</h2><p>Base Cloudflare D1 reliée au site sous le nom <code>DB</code>.</p><p><strong>${state.testBallots}</strong> bulletin(s) test enregistré(s) · période de test ${state.isOpen && state.testMode ? "ouverte" : "fermée"}.</p>${latest}<button class="admin-button secondary" id="refresh-state" type="button">Actualiser l’état</button></section>
-    <section class="admin-panel"><h2>Créer un lien pour le vote test</h2><p>Le lien est généré ici et n’est envoyé à personne. Ouvre-le dans un autre onglet pour soumettre un vrai bulletin de test enregistré dans D1.</p><label class="field">Nom de test<input id="test-name" maxlength="100" value="Vote test MPL" /></label><div class="admin-row"><button class="admin-button" id="create-test-link" type="button">Créer mon lien test</button><span class="admin-message" id="link-message" role="status"></span></div><label class="field" id="link-field" hidden>Lien de test<input id="test-link" type="url" readonly /></label><div class="admin-row" id="link-actions" hidden><button class="admin-button secondary" id="copy-test-link" type="button">Copier le lien</button><a class="admin-button" id="open-test-link" target="_blank" rel="noopener noreferrer">Ouvrir le lien</a></div></section>
-    <section class="admin-panel"><h2>Clôturer le test</h2><p>La clôture désactive les liens de test encore ouverts.</p><button class="admin-button danger" id="close-test" type="button" ${state.isOpen && state.testMode ? "" : "disabled"}>Clôturer la période de test</button><span class="admin-message" id="close-message" role="status"></span></section>
-    <p><a href="./">← Retour au site</a></p>`;
-
+  const warning = state.pending?.length
+    ? `<aside class="notice"><span class="notice-icon">!</span><div><strong>Le catalogue comporte des éléments à vérifier.</strong><ul>${state.pending.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul><p>Confirme les catégories et les noms avant de partager les liens du scrutin.</p></div></aside>`
+    : `<p class="status-good">Catalogue chargé · ${state.categoryCount} catégories · ${state.nominationCount} nominés.</p>`;
+  const closeDate = state.closesAt ? new Date(state.closesAt).toLocaleString("fr-FR", { timeZone:"Africa/Abidjan" }) : "à définir";
+  root.innerHTML = `<div class="admin-intro"><p class="eyebrow">LE CLUB MPL 11 · ÉDITION 2026</p><h1>Scrutin officiel</h1><p>Crée sept liens individuels à partager toi-même. Chaque lien est utilisable une fois et expire après le vote ou à la clôture du scrutin.</p></div>
+    <div class="demo-ribbon">MODE RÉEL — les votes officiels sont enregistrés dans Cloudflare D1 et comptés séparément des anciens bulletins de test.</div>
+    ${warning}
+    <section class="admin-panel"><h2>État du scrutin</h2><div class="live-stats"><p><strong>${state.officialBallots}</strong><span>votes officiels</span></p><p><strong>${state.officialLinks}</strong><span>liens non utilisés</span></p><p><strong>${state.testBallots}</strong><span>anciens tests isolés</span></p></div><p class="field-note">Clôture configurée : ${escapeHtml(closeDate)} · fuseau Abidjan.</p><button class="admin-button secondary" id="refresh-state" type="button">Actualiser l’état</button></section>
+    <section class="admin-panel"><h2>Liens personnels de vote</h2><p>Les liens sont affichés une seule fois après génération. Copie-les et conserve une copie sécurisée avant de quitter cette page. Tu pourras remplacer le lot tant qu’aucun vote officiel n’a été soumis.</p><div class="admin-row"><button class="admin-button" id="create-official-links" type="button">${state.officialLinks ? "Remplacer le lot de liens" : "Générer les 7 liens"}</button><span class="admin-message" id="links-message" role="status"></span></div><div id="generated-links" class="generated-links" hidden></div></section>
+    <section class="admin-panel"><h2>Résultats officiels</h2><p>Les résultats sont agrégés par catégorie. Les choix individuels ne sont pas dévoilés.</p><div class="admin-row"><button class="admin-button secondary" id="load-results" type="button">Charger les résultats</button><button class="admin-button secondary" id="export-results" type="button" hidden>Exporter en CSV</button></div><div id="results-content" class="admin-results"></div></section>
+    <section class="admin-panel"><h2>Clôture</h2><p>La clôture désactive immédiatement les liens encore ouverts.</p><button class="admin-button danger" id="close-vote" type="button" ${state.isOpen ? "" : "disabled"}>Clôturer le scrutin</button><span class="admin-message" id="close-message" role="status"></span></section>
+    <p><a href="./">← Retour à la page publique</a></p>`;
+  if (links) renderLinks(links.links, links.expiresAt);
+  if (resultData) renderResults(resultData);
   document.querySelector("#refresh-state").addEventListener("click", refreshState);
-  document.querySelector("#create-test-link").addEventListener("click", createTestLink);
-  document.querySelector("#copy-test-link").addEventListener("click", copyTestLink);
-  document.querySelector("#close-test").addEventListener("click", closeTest);
+  document.querySelector("#create-official-links").addEventListener("click", createOfficialLinks);
+  document.querySelector("#load-results").addEventListener("click", loadResults);
+  document.querySelector("#export-results").addEventListener("click", exportResults);
+  document.querySelector("#close-vote").addEventListener("click", closeVote);
 }
 
 async function refreshState() {
-  try {
-    renderDashboard(await api("adminState"));
-  } catch (error) {
-    showMessage("login-message", error.message, true);
-  }
+  try { renderDashboard(await api("adminState")); }
+  catch (error) { showMessage("login-message", error.message, true); }
 }
-
-async function createTestLink() {
-  const button = document.querySelector("#create-test-link");
+async function createOfficialLinks() {
+  if (state.officialLinks && !window.confirm("Cela invalidera les liens personnels non utilisés et en créera sept nouveaux. Continuer ?")) return;
+  const button = document.querySelector("#create-official-links");
   button.disabled = true;
-  showMessage("link-message", "Création du lien…");
+  showMessage("links-message", "Génération des sept liens…");
   try {
-    const result = await api("adminCreateTestLink", { name: document.querySelector("#test-name").value });
-    document.querySelector("#test-link").value = result.testUrl;
-    document.querySelector("#link-field").hidden = false;
-    document.querySelector("#link-actions").hidden = false;
-    document.querySelector("#open-test-link").href = result.testUrl;
-    showMessage("link-message", "Lien créé. Il expire dans une heure ou après le vote.");
-    state = await api("adminState");
-    const linkField = document.querySelector("#link-field");
-    const linkActions = document.querySelector("#link-actions");
-    const linkValue = document.querySelector("#test-link").value;
-    renderDashboard(state);
-    document.querySelector("#test-link").value = linkValue;
-    document.querySelector("#link-field").hidden = false;
-    document.querySelector("#link-actions").hidden = false;
-    document.querySelector("#open-test-link").href = linkValue;
-    showMessage("link-message", "Lien créé. Il expire dans une heure ou après le vote.");
+    const links = await api("adminCreateOfficialLinks");
+    resultData = null;
+    renderDashboard(await api("adminState"), links);
+    showMessage("links-message", "Les sept liens sont créés. Copie-les avant de quitter cette page.");
   } catch (error) {
-    showMessage("link-message", error.message, true);
+    showMessage("links-message", error.message, true);
     button.disabled = false;
   }
 }
-
-async function copyTestLink() {
-  const value = document.querySelector("#test-link").value;
-  try {
-    await navigator.clipboard.writeText(value);
-    showMessage("link-message", "Lien copié. Ouvre-le dans un nouvel onglet pour voter.");
-  } catch {
-    document.querySelector("#test-link").select();
-    showMessage("link-message", "Sélectionne le lien puis copie-le avec Ctrl+C.");
-  }
+async function loadResults() {
+  try { renderResults(await api("adminResults")); }
+  catch (error) { showMessage("login-message", error.message, true); }
 }
-
-async function closeTest() {
-  const button = document.querySelector("#close-test");
+function exportResults() {
+  if (!resultData) return;
+  const rows = [["Catégorie", "Nominé", "Votes"]];
+  for (const category of resultData.categories) for (const nominee of category.nominees) rows.push([category.title, nominee.name, nominee.votes]);
+  const csv = "\uFEFF" + rows.map((row) => row.map((value) => `"${String(value).replaceAll('"','""')}"`).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type:"text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "resultats-officiels-mpl.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+async function closeVote() {
+  if (!window.confirm("Clôturer le scrutin maintenant ? Les liens encore ouverts cesseront de fonctionner.")) return;
+  const button = document.querySelector("#close-vote");
   button.disabled = true;
-  try {
-    await api("adminCloseVote");
-    renderDashboard(await api("adminState"));
-  } catch (error) {
-    showMessage("close-message", error.message, true);
-    button.disabled = false;
-  }
+  try { await api("adminCloseVote"); resultData = null; renderDashboard(await api("adminState")); }
+  catch (error) { showMessage("close-message", error.message, true); button.disabled = false; }
 }
 
 document.querySelector("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   adminSecret = document.querySelector("#admin-secret").value;
   showMessage("login-message", "Vérification…");
-  try {
-    renderDashboard(await api("adminState"));
-  } catch (error) {
-    adminSecret = "";
-    showMessage("login-message", error.message, true);
-  }
+  try { renderDashboard(await api("adminState")); }
+  catch (error) { adminSecret = ""; showMessage("login-message", error.message, true); }
 });
