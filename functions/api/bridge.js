@@ -38,6 +38,35 @@ function safeEqual(left, right) {
   return difference === 0;
 }
 
+function base64UrlEncode(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');
+}
+
+function base64UrlDecode(value) {
+  const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(normalized + '='.repeat((4 - normalized.length % 4) % 4));
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function tokenEncryptionKey(secret) {
+  const material = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('mpl-official-invite-token-v1:' + secret));
+  return crypto.subtle.importKey('raw', material, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+async function encryptInviteToken(token, secret) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await tokenEncryptionKey(secret);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token));
+  return { tokenCiphertext: base64UrlEncode(new Uint8Array(ciphertext)), tokenIv: base64UrlEncode(iv) };
+}
+
+async function decryptInviteToken(ciphertext, iv, secret) {
+  const key = await tokenEncryptionKey(secret);
+  const cleartext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64UrlDecode(iv) }, key, base64UrlDecode(ciphertext));
+  return new TextDecoder().decode(cleartext);
+}
 async function ensureSchema(db) {
   const statements = [
     `CREATE TABLE IF NOT EXISTS settings (
@@ -58,7 +87,9 @@ async function ensureSchema(db) {
       voter_id TEXT NOT NULL REFERENCES voters(id),
       expires_at TEXT NOT NULL,
       used INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      token_ciphertext TEXT,
+      token_iv TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS sessions (
       session_hash TEXT PRIMARY KEY,
@@ -87,6 +118,11 @@ async function ensureSchema(db) {
     "CREATE INDEX IF NOT EXISTS idx_ballots_test ON ballots(is_test, created_at)",
   ];
   await db.batch(statements.map((sql) => db.prepare(sql)));
+
+  const linkColumns = await db.prepare('PRAGMA table_info(invite_links)').all();
+  const existingColumns = new Set((linkColumns.results || []).map((column) => column.name));
+  if (!existingColumns.has('token_ciphertext')) await db.prepare('ALTER TABLE invite_links ADD COLUMN token_ciphertext TEXT').run();
+  if (!existingColumns.has('token_iv')) await db.prepare('ALTER TABLE invite_links ADD COLUMN token_iv TEXT').run();
 
   const catalogHash = await digest(JSON.stringify(ballot));
   const defaults = [
@@ -130,18 +166,35 @@ async function adminState(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
   const settings = await getSettings(db);
-  const [testStats, liveStats, linkStats, latestLive] = await Promise.all([
-    db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 1").first(),
-    db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first(),
-    db.prepare("SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ?")
-      .bind(new Date().toISOString()).first(),
-    db.prepare("SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0").first(),
+  const [testStats, liveStats, linkStats, latestLive, linkRows] = await Promise.all([
+    db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 1').first(),
+    db.prepare('SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0').first(),
+    db.prepare('SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 AND v.active = 1 AND v.voted = 0 AND l.used = 0 AND l.expires_at > ?').bind(new Date().toISOString()).first(),
+    db.prepare('SELECT MAX(created_at) AS created_at FROM ballots WHERE is_test = 0').first(),
+    db.prepare('SELECT v.id AS id, v.name AS name, v.active AS active, v.voted AS voted, l.used AS used, l.expires_at AS expires_at, l.created_at AS created_at, l.token_ciphertext AS token_ciphertext, l.token_iv AS token_iv FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0 ORDER BY l.created_at DESC').all(),
   ]);
+  const now = Date.now();
+  const origin = new URL(request.url).origin;
+  const officialLinkItems = await Promise.all((linkRows.results || []).map(async (row) => {
+    let status = 'available';
+    if (Number(row.used) === 1 || Number(row.voted) === 1) status = 'used';
+    else if (Number(row.active) !== 1) status = 'disabled';
+    else if (Date.parse(row.expires_at) <= now) status = 'expired';
+    else if (settings.is_open !== '1') status = 'closed';
+    let url = null;
+    if (status === 'available' && row.token_ciphertext && row.token_iv) {
+      try {
+        const token = await decryptInviteToken(row.token_ciphertext, row.token_iv, String(env.ADMIN_SECRET || ''));
+        url = origin + '/#t=' + encodeURIComponent(token);
+      } catch { status = 'unrecoverable'; }
+    } else if (status === 'available') status = 'unrecoverable';
+    return { id: row.id, name: row.name, status, url, expiresAt: row.expires_at, createdAt: row.created_at };
+  }));
   return reply({
     ok: true,
     title: settings.title || ballot.title,
-    isOpen: settings.is_open === "1" && Date.parse(settings.closes_at || "") > Date.now(),
-    testMode: settings.test_mode === "1",
+    isOpen: settings.is_open === '1' && Date.parse(settings.closes_at || '') > Date.now(),
+    testMode: settings.test_mode === '1',
     closesAt: settings.closes_at || ballot.closesAt,
     categoryCount: ballot.categories.length,
     nominationCount: ballot.categories.reduce((count, category) => count + category.nominees.length, 0),
@@ -149,10 +202,10 @@ async function adminState(db, env, input, request) {
     testBallots: Number(testStats?.total || 0),
     officialBallots: Number(liveStats?.total || 0),
     officialLinks: Number(linkStats?.total || 0),
+    links: officialLinkItems,
     lastOfficialBallotAt: latestLive?.created_at || null,
   });
 }
-
 async function createTestLink(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
@@ -185,44 +238,64 @@ async function createTestLink(db, env, input, request) {
 async function createOfficialLinks(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
-  const closesAtMs = Date.parse(ballot.closesAt || "");
-  if (!Number.isFinite(closesAtMs) || closesAtMs <= Date.now()) return fail(409, "La date de clôture du bulletin est passée ou invalide.");
-  const alreadyVoted = await db.prepare("SELECT COUNT(*) AS total FROM ballots WHERE is_test = 0").first();
-  if (Number(alreadyVoted?.total || 0) > 0) return fail(409, "Le scrutin officiel a déjà commencé. Les liens existants ne peuvent plus être remplacés.");
+  const requestedCount = Number(input.count ?? 7);
+  if (!Number.isSafeInteger(requestedCount) || requestedCount < 1 || requestedCount > 1000) {
+    return fail(400, 'Choisis entre 1 et 1 000 liens par création. Tu peux en ajouter autant de fois que nécessaire.');
+  }
+  const settings = await getSettings(db);
+  const closesAtMs = Date.parse(settings.closes_at || ballot.closesAt || '');
+  if (!Number.isFinite(closesAtMs) || closesAtMs <= Date.now()) return fail(409, 'La date de clôture du bulletin est passée ou invalide.');
+  const totalExisting = await db.prepare('SELECT COUNT(*) AS total FROM invite_links l JOIN voters v ON v.id = l.voter_id WHERE v.is_test = 0').first();
+  const existingCount = Number(totalExisting?.total || 0);
+  if (existingCount > 0 && settings.is_open !== '1') return fail(409, 'Le scrutin est fermé. Aucun lien supplémentaire ne peut être activé.');
+  const firstNumber = existingCount + 1;
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(closesAtMs).toISOString();
-  const links = Array.from({ length: 7 }, (_, index) => {
+  const links = [];
+  for (let index = 0; index < requestedCount; index += 1) {
     const token = randomToken();
-    return { token, tokenHash: "", voterId: crypto.randomUUID(), name: `Bulletin ${String(index + 1).padStart(2, "0")}` };
-  });
-  for (const link of links) link.tokenHash = await digest(link.token);
-  const retireOldLinks = [
-    db.prepare("UPDATE invite_links SET used = 1 WHERE voter_id IN (SELECT id FROM voters WHERE is_test = 0 AND active = 1 AND voted = 0)"),
-    db.prepare("UPDATE voters SET active = 0 WHERE is_test = 0 AND active = 1 AND voted = 0"),
-  ];
-  const inserts = links.flatMap((link) => [
-    db.prepare("INSERT INTO voters (id, name, email, active, voted, is_test, created_at) VALUES (?, ?, ?, 1, 0, 0, ?)")
-      .bind(link.voterId, link.name, `bulletin-${link.voterId}@invalid.local`, createdAt),
-    db.prepare("INSERT INTO invite_links (token_hash, voter_id, expires_at, used, created_at) VALUES (?, ?, ?, 0, ?)")
-      .bind(link.tokenHash, link.voterId, expiresAt, createdAt),
-  ]);
+    const encrypted = await encryptInviteToken(token, String(env.ADMIN_SECRET || ''));
+    links.push({
+      token, tokenHash: await digest(token), tokenCiphertext: encrypted.tokenCiphertext, tokenIv: encrypted.tokenIv,
+      voterId: crypto.randomUUID(), name: 'Bulletin ' + String(firstNumber + index).padStart(3, '0'),
+    });
+  }
+  for (let start = 0; start < links.length; start += 100) {
+    const chunk = links.slice(start, start + 100);
+    const inserts = chunk.flatMap((link) => [
+      db.prepare('INSERT INTO voters (id, name, email, active, voted, is_test, created_at) VALUES (?, ?, ?, 1, 0, 0, ?)')
+        .bind(link.voterId, link.name, 'bulletin-' + link.voterId + '@invalid.local', createdAt),
+      db.prepare('INSERT INTO invite_links (token_hash, voter_id, expires_at, used, created_at, token_ciphertext, token_iv) VALUES (?, ?, ?, 0, ?, ?, ?)')
+        .bind(link.tokenHash, link.voterId, expiresAt, createdAt, link.tokenCiphertext, link.tokenIv),
+    ]);
+    await db.batch(inserts);
+  }
   await db.batch([
-    ...retireOldLinks,
-    ...inserts,
     db.prepare("INSERT INTO settings (key, value) VALUES ('test_mode', '0') ON CONFLICT(key) DO UPDATE SET value = '0'"),
     db.prepare("INSERT INTO settings (key, value) VALUES ('is_open', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"),
     db.prepare("INSERT INTO settings (key, value) VALUES ('closes_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(expiresAt),
-    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'createOfficialLinks', ?)")
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'addOfficialLinks', ?)")
       .bind(crypto.randomUUID(), createdAt, JSON.stringify({ count: links.length, expiresAt })),
   ]);
   const origin = new URL(request.url).origin;
-  return reply({
-    ok: true,
-    expiresAt,
-    links: links.map((link) => ({ name: link.name, url: `${origin}/#t=${encodeURIComponent(link.token)}` })),
-  });
+  return reply({ ok: true, expiresAt, links: links.map((link) => ({ id: link.voterId, name: link.name, url: origin + '/#t=' + encodeURIComponent(link.token) })) });
 }
 
+async function disableOfficialLink(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const id = String(input.linkId || '');
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return fail(400, 'Ce lien est invalide.');
+  const createdAt = new Date().toISOString();
+  const result = await db.batch([
+    db.prepare('UPDATE voters SET active = 0 WHERE id = ? AND is_test = 0 AND active = 1 AND voted = 0').bind(id),
+    db.prepare('UPDATE invite_links SET used = 1 WHERE voter_id = ? AND used = 0 AND EXISTS (SELECT 1 FROM voters WHERE id = ? AND active = 0 AND voted = 0)').bind(id, id),
+    db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) SELECT ?, ?, 'disableOfficialLink', ? WHERE EXISTS (SELECT 1 FROM voters WHERE id = ? AND active = 0 AND voted = 0)")
+      .bind(crypto.randomUUID(), createdAt, JSON.stringify({ voterId: id }), id),
+  ]);
+  if (!result[0]?.meta?.changes) return fail(409, 'Ce lien n’est plus disponible ou a déjà été utilisé.');
+  return reply({ ok: true });
+}
 async function adminResults(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
@@ -378,6 +451,7 @@ export async function onRequestPost({ request, env }) {
       case "adminState": return await adminState(env.DB, env, input, request);
       case "adminCreateTestLink": return await createTestLink(env.DB, env, input, request);
       case "adminCreateOfficialLinks": return await createOfficialLinks(env.DB, env, input, request);
+      case "adminDisableOfficialLink": return await disableOfficialLink(env.DB, env, input, request);
       case "adminResults": return await adminResults(env.DB, env, input, request);
       case "adminCloseVote": {
         const auth = await requireAdmin(request, env, input);
