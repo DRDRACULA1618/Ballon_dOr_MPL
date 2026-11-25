@@ -1,20 +1,164 @@
 {
-  "evenement": "MPL Ballin’ d’Or 2026",
-  "statut": "Premier draft, à valider",
+  "evenement": "MPL Awards 2026",
+  "statut": "Catalogue communiqué par le gérant de la cérémonie",
   "nombre_categories": 11,
-  "nombre_nominations": 68,
+  "nombre_nominations": 76,
   "categories": [
-    {"id":"C01","titre":"Meilleure recrue","nomines":["Mahmoud","Blaise","Brice","Doudou","Magdi","Adjoumani","Hossane kader","Ange le corps du desir"]},
-    {"id":"C02","titre":"Meilleur ROOkie","nomines":["Doudou","Blaise","Qays","Mahmoud","Hossane kader"]},
-    {"id":"C03","titre":"Meilleur milieu","nomines":["Moritie","Sidick","Youcef","Tehui","Doudou","Amadou","Cyrille","Ali","Hugo"]},
-    {"id":"C04","titre":"Le joueur attieke le abodjam","nomines":["Sheva","Sidick","Isco","Asco","Abraham","Jean rene"]},
-    {"id":"C05","titre":"Meilleure progression","nomines":["Frabck gogo","Tonton moritie","Adams","Abraham","Tehui amoroso"]},
-    {"id":"C06","titre":"Performùance de l’année","nomines":["Gaououssou","Bley alexandre","Jean marie","Youyou"]},
-    {"id":"C07","titre":"Meilleure capi","nomines":["Tehui","Abraham","Gaopussou","Jean marie"]},
-    {"id":"C08","titre":"Badaud fatche separez les","nomines":["Bley","Hossane vs guillaume","Pelo vs youyou","Gaoussou vs jean marie"]},
-    {"id":"C09","titre":"Le -eme homme","nomines":["Isco","Kader","Magdi","Hugo","Blaise","Hassane junior"]},
-    {"id":"C10","titre":"Meilleur defenseur","nomines":["Jean marie","Pelo","Louis roland","Brice","Adams","Asco","Hassane junior","Junior","Momo ouattara","Qays"]},
-    {"id":"C11","titre":"Meilleur avant centre","nomines":["Gaoussou","Youyou","Gogo","Abraham","Dodji","Momo Dramera","Magdi"]}
+    {
+      "id": "C01",
+      "titre": "Meilleure recrue",
+      "description": "La plus belle recrue de la saison en MPL.",
+      "nomines": [
+        "Mahmoud",
+        "Blaise",
+        "Brice",
+        "Doudou",
+        "Magdi",
+        "Adjoumani",
+        "Hossane Kader",
+        "Ange, le Corps du Désir"
+      ]
+    },
+    {
+      "id": "C02",
+      "titre": "Meilleur rookie",
+      "description": "La révélation de la saison, celui qui a marqué les esprits dès ses débuts.",
+      "nomines": [
+        "Doudou",
+        "Blaise",
+        "Qays",
+        "Mahmoud",
+        "Hossane Kader"
+      ]
+    },
+    {
+      "id": "C03",
+      "titre": "Le Bélier d’Or",
+      "description": "Le meilleur milieu de terrain de la saison. Le maître de l’entrejeu.",
+      "nomines": [
+        "Tonton Moritie",
+        "Sidick",
+        "Youcef",
+        "Pelo",
+        "Amadou",
+        "Cyrille"
+      ]
+    },
+    {
+      "id": "C04",
+      "titre": "L’Abodjama",
+      "description": "Le joueur le plus polyvalent. Celui qui répond présent partout, quel que soit le poste.",
+      "nomines": [
+        "Sheva",
+        "Sidick",
+        "Isco",
+        "Asco",
+        "Abraham",
+        "Jean René",
+        "Youyou"
+      ]
+    },
+    {
+      "id": "C05",
+      "titre": "La meilleure progression",
+      "description": "Le joueur qui a connu la plus belle évolution au cours de la saison.",
+      "nomines": [
+        "Franck Gogo",
+        "Tonton Moritie",
+        "Adams",
+        "Abraham",
+        "Tehui",
+        "Amoroso"
+      ]
+    },
+    {
+      "id": "C06",
+      "titre": "Le Trophée Shokanawa",
+      "description": "Le trophée des performances folles, des masterclass et des exploits qui ont mis le village debout.",
+      "nomines": [
+        "Gaoussou",
+        "Bley Alexandre",
+        "Jean Marie",
+        "Youyou",
+        "Abraham"
+      ]
+    },
+    {
+      "id": "C07",
+      "titre": "Le meilleur capitaine",
+      "description": "Le leader des hommes, celui qui fédère, galvanise et conduit les siens.",
+      "nomines": [
+        "Tehui",
+        "Abraham",
+        "Gaoussou",
+        "Jean Marie"
+      ]
+    },
+    {
+      "id": "C08",
+      "titre": "Le Roi 12-12",
+      "description": "Le meilleur remplaçant. Celui qui transforme une entrée en jeu en tournant du match.",
+      "nomines": [
+        "Isco",
+        "Kader",
+        "Magdi",
+        "Jean René",
+        "Blaise",
+        "Hassane Junior"
+      ]
+    },
+    {
+      "id": "C09",
+      "titre": "L’Orfèvre d’Or",
+      "description": "Le meilleur défenseur de la saison. L’art de défendre élevé au rang d’orfèvrerie.",
+      "nomines": [
+        "Jean Marie",
+        "Pelo",
+        "Louis Roland",
+        "Momo Ouattara",
+        "Adams",
+        "Asco",
+        "Zaha Zokou",
+        "Qays"
+      ]
+    },
+    {
+      "id": "C10",
+      "titre": "Le Goleador",
+      "description": "Le buteur par excellence. Celui qui entretient une relation privilégiée avec les filets.",
+      "nomines": [
+        "Gaoussou",
+        "Youyou",
+        "Gogo",
+        "Abraham",
+        "Dodji",
+        "Isco",
+        "Bley Alexandre"
+      ]
+    },
+    {
+      "id": "C11",
+      "titre": "Le Ballon d’Or MPL",
+      "description": "La récompense suprême. Le joueur qui, par son talent, sa régularité, son influence et ses performances, a marqué la saison de son empreinte.",
+      "nomines": [
+        "Gaoussou",
+        "Amadou",
+        "Cyrille",
+        "Sidick",
+        "Dodji D.",
+        "Abraham",
+        "Louis Roland",
+        "Pelo",
+        "Jean Marie",
+        "Youcef",
+        "Youyou",
+        "Isco",
+        "Franck Gogo",
+        "Jojo"
+      ]
+    }
   ],
-  "remarques": ["Orthographes conservées telles que fournies dans le premier message.","Confirmer les libellés ambigus et les éventuels alias avant l'ouverture.","Les noms répétés entre catégories sont intentionnellement conservés."]
+  "remarques": [
+    "Noms, catégories et descriptions reproduits selon les derniers inputs du gérant. Les noms répétés entre catégories sont conservés."
+  ]
 }
