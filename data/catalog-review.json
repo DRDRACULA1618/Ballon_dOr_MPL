@@ -1,8 +1,8 @@
 {
-  "pending": [
-    "Valider les graphies et alias, notamment « Frabck gogo », « Gaououssou » et « Gaopussou ».",
-    "Valider les libellés ambigus des catégories C02, C04, C06 et C09 sans les corriger automatiquement.",
-    "Confirmer l’interprétation de C08 « Badaud fatche separez les » et le format de ses quatre nominations.",
-    "Confirmer que les 11 catégories et 68 nominations reproduisent bien le bulletin voulu avant l’ouverture."
+  "catalog_version": "mpl-awards-2026-official-2",
+  "status": "provided_by_event_manager",
+  "pending": [],
+  "notes": [
+    "Nom et descriptions conservés tels que communiqués. Les listes totalisent 76 nominations dont 14 finalistes au Ballon d’Or."
   ]
 }
