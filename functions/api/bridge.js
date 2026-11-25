@@ -174,7 +174,7 @@ async function getSettings(db) {
 function catalogFromSettings(settings) {
   try {
     const catalog = JSON.parse(settings.catalog_json || '');
-    if (catalog && Array.isArray(catalog.categories)) return catalog;
+    if (catalog && Array.isArray(catalog.categories) && catalog.catalogVersion === ballot.catalogVersion) return catalog;
   } catch {}
   return ballot;
 }
