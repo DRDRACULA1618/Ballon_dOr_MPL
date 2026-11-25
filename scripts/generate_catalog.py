@@ -11,7 +11,7 @@ SOURCE = ROOT / "data" / "NOMINATIONS_SOURCE.json"
 REVIEW = ROOT / "data" / "catalog-review.json"
 PUBLIC_OUT = ROOT / "public" / "data.js"
 GAS_OUT = ROOT / "apps-script" / "Catalog.gs"
-VERSION = "mpl-ballin-dor-2026-draft-1"
+VERSION = "mpl-awards-2026-official-2"
 
 
 def js(value: object) -> str:
@@ -24,14 +24,15 @@ def main() -> None:
     source = json.loads(SOURCE.read_text(encoding="utf-8"))
     review = json.loads(REVIEW.read_text(encoding="utf-8"))
     nomination_total = sum(len(item["nomines"]) for item in source["categories"])
-    if len(source["categories"]) != 11 or nomination_total != 68:
-        raise ValueError("Le transfert attendu comporte 11 catégories et 68 nominations.")
+    if len(source["categories"]) != source["nombre_categories"] or nomination_total != source["nombre_nominations"]:
+        raise ValueError("Le nombre de catégories ou nominations du fichier source est incohérent.")
     categories = []
     for category in source["categories"]:
         categories.append(
             {
                 "id": category["id"],
                 "title": category["titre"],
+                "description": category.get("description", ""),
                 "nominees": [
                     {"id": f'{category["id"]}-N{index:02d}', "name": name}
                     for index, name in enumerate(category["nomines"], start=1)
