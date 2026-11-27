@@ -502,6 +502,30 @@ async function adminDeleteAllPhotos(db, env, input, request) {
   return reply({ ok: true, deletedCount: photos.length });
 }
 
+
+async function adminUnassignPhotoFromAlias(db, env, input, request) {
+  const auth = await requireAdmin(request, env, input);
+  if (auth.error) return auth.error;
+  const photoId = String(input.photoId || '');
+  const photo = await db.prepare('SELECT id, assigned_alias FROM photo_library WHERE id = ?').bind(photoId).first();
+  if (!photo) return fail(404, 'Cette photo n’est plus dans la galerie.');
+  if (!photo.assigned_alias) return reply({ ok: true, photoId, unassigned: true });
+  const settings = await getSettings(db);
+  const catalog = catalogFromSettings(settings);
+  const normalize = (value) => String(value || '').trim().normalize('NFC').toLocaleLowerCase('fr');
+  const writes = [db.prepare('DELETE FROM nominee_photos WHERE library_photo_id = ?').bind(photoId)];
+  for (const category of catalog.categories) for (const nominee of category.nominees) {
+    if (normalize(nominee.name) === normalize(photo.assigned_alias)) {
+      writes.push(db.prepare('DELETE FROM nominee_photos WHERE nominee_id = ?').bind(nominee.id));
+    }
+  }
+  writes.push(db.prepare('UPDATE photo_library SET assigned_alias = NULL WHERE id = ?').bind(photoId));
+  writes.push(db.prepare("INSERT INTO audit (event_id, created_at, action, details_json) VALUES (?, ?, 'unassignPhotoFromAlias', ?)")
+    .bind(crypto.randomUUID(), new Date().toISOString(), JSON.stringify({ photoId, aliasName: photo.assigned_alias })));
+  await db.batch(writes);
+  return reply({ ok: true, photoId, aliasName: photo.assigned_alias });
+}
+
 async function adminRenameAlias(db, env, input, request) {
   const auth = await requireAdmin(request, env, input);
   if (auth.error) return auth.error;
@@ -744,6 +768,7 @@ export async function onRequestPost({ request, env }) {
       case "adminDeletePhoto": return await adminDeletePhoto(env.DB, env, input, request);
       case "adminDeleteAllPhotos": return await adminDeleteAllPhotos(env.DB, env, input, request);
       case "adminRenameAlias": return await adminRenameAlias(env.DB, env, input, request);
+      case "adminUnassignPhotoFromAlias": return await adminUnassignPhotoFromAlias(env.DB, env, input, request);
       case "adminAssignPhotoToAlias": return await adminAssignPhotoToAlias(env.DB, env, input, request);
       case "adminResults": return await adminResults(env.DB, env, input, request);
       case "adminCloseVote": {
