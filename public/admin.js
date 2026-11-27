@@ -171,7 +171,7 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
           <article class="alias-card" data-alias="${escapeHtml(person.name)}">
             <div class="alias-card-photo-wrap"><div class="alias-card-photo">${person.photoUrl ? `<img src="${escapeHtml(person.photoUrl)}" alt="Portrait pixel art de ${escapeHtml(person.name)}">` : `<span>${escapeHtml(person.name.trim().slice(0,1).toUpperCase() || "?")}</span>`}</div>${person.photoUrl ? `<small class="pixel-art-label">Pixel art</small>` : ""}</div>
             <div class="alias-card-info"><label>Alias<input class="alias-name-input" maxlength="80" value="${escapeHtml(person.name)}"></label></div>
-            <div class="alias-card-actions"><button class="admin-button secondary save-alias" type="button">Corriger l’alias</button><button class="admin-button assign-selected-photo" type="button" ${selectedPhoto ? "" : "disabled"}>Associer la photo choisie</button></div>
+            <div class="alias-card-actions"><button class="admin-button secondary save-alias" type="button">Corriger l’alias</button><button class="admin-button assign-selected-photo" type="button" ${selectedPhoto ? "" : "disabled"}>Associer la photo choisie</button><button class="admin-button secondary unassign-photo" data-photo-id="${escapeHtml(photoLibrary.find((photo) => String(photo.assignedAlias || '').trim().normalize('NFC').toLocaleLowerCase('fr') === String(person.name || '').trim().normalize('NFC').toLocaleLowerCase('fr'))?.id || '')}" type="button" ${person.photoUrl ? "" : "hidden"}>Dissocier la photo</button></div>
             <div class="alias-drop-target" tabindex="0" role="button">Déposer la photo ici</div>
           </article>`).join("") || `<p class="field-note">Aucun participant dans le catalogue.</p>`}</div>
       </section>
@@ -226,6 +226,7 @@ function renderNomineeManager(participants, photoLibrary, dashboardState) {
   target.querySelectorAll(".alias-card").forEach((card) => {
     const drop = card.querySelector(".alias-drop-target");
     card.querySelector(".save-alias").addEventListener("click", () => saveAlias(card));
+    card.querySelector(".unassign-photo").addEventListener("click", () => unassignPhoto(card));
     card.querySelector(".assign-selected-photo").addEventListener("click", () => assignPhoto(card, selectedPhoto));
     drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("is-dragging"); });
     drop.addEventListener("dragleave", () => drop.classList.remove("is-dragging"));
@@ -335,6 +336,21 @@ async function assignPhoto(card, photoId) {
     resultData = null;
     renderDashboard(await api("adminState"));
     managerMessage(`Photo associée à « ${result.aliasName} » pour ${result.nominations} nomination(s).`);
+  } catch (error) { managerMessage(error.message, true); button.disabled = false; }
+}
+
+
+async function unassignPhoto(card) {
+  const button = card.querySelector(".unassign-photo");
+  const photoId = button.dataset.photoId;
+  if (!photoId) return managerMessage("La photo associée est introuvable dans la galerie.", true);
+  button.disabled = true;
+  try {
+    await api("adminUnassignPhotoFromAlias", { photoId });
+    window.selectedLibraryPhotoId = photoId;
+    resultData = null;
+    renderDashboard(await api("adminState"));
+    managerMessage("Photo dissociée et replacée dans la galerie de droite.");
   } catch (error) { managerMessage(error.message, true); button.disabled = false; }
 }
 
